@@ -211,7 +211,17 @@ def get_supabase():
     return None
 
 def migrate_data(data):
-    if "motos" not in data and "moto" in data:
+    # Caso o JSON venha como string do banco, converte para dict
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        return json.loads(json.dumps(DEFAULT_DATA))
+
+    # Migração da versão v1 (chave 'moto' única) para v2 ('motos' lista)
+    if "motos" not in data and "moto" in data and isinstance(data["moto"], dict):
         old_moto = data.pop("moto")
         old_pecas = data.pop("pecas", [])
         data["moto_ativa_id"] = "moto_1"
@@ -225,17 +235,51 @@ def migrate_data(data):
             "seguro_anual": old_moto.get("seguro_anual", 984.08),
             "licenciamento_anual": old_moto.get("licenciamento_anual", 174.08),
             "projecao_anual_km": old_moto.get("projecao_anual_km", 37286.64),
-            "pecas": old_pecas
+            "pecas": old_pecas if isinstance(old_pecas, list) else []
         }]
-    for t in data.get("turnos", []):
-        t.setdefault("moto_id", "moto_1")
-        t.setdefault("moto_nome", "Bros 150 Principal")
-        t.setdefault("estabelecimento", "Não informado")
-        t.setdefault("ganho_app", 0.0)
-        t.setdefault("ganho_estab", 0.0)
-        t.setdefault("custo_reserva_km", 0.1201)
-    if "manutencoes" not in data:
-        data["manutencoes"] = HISTORICO_MANUTENCOES_INICIAL
+
+    # Blindagem contra formato inesperado em db["motos"] (ex: dict ou lista de strings)
+    motos_raw = data.get("motos")
+    if isinstance(motos_raw, dict):
+        motos_list = list(motos_raw.values())
+    elif isinstance(motos_raw, list):
+        motos_list = [m for m in motos_raw if isinstance(m, dict)]
+    else:
+        motos_list = []
+
+    if not motos_list:
+        motos_list = json.loads(json.dumps(DEFAULT_DATA["motos"]))
+
+    for idx, m in enumerate(motos_list):
+        m.setdefault("id", f"moto_{idx + 1}")
+        m.setdefault("apelido", f"Moto {idx + 1}")
+        m.setdefault("modelo", "Honda NXR 150 Bros ESD 2008 (Carburada)")
+        m.setdefault("hodometro", 81185)
+        m.setdefault("preco_gasolina", 5.99)
+        m.setdefault("consumo_kml", 29.0)
+        m.setdefault("seguro_anual", 984.08)
+        m.setdefault("licenciamento_anual", 174.08)
+        m.setdefault("projecao_anual_km", 37286.64)
+        if not isinstance(m.get("pecas"), list):
+            m["pecas"] = json.loads(json.dumps(DEFAULT_DATA["motos"][0]["pecas"]))
+
+    data["motos"] = motos_list
+    data.setdefault("moto_ativa_id", motos_list[0]["id"])
+
+    if not isinstance(data.get("turnos"), list):
+        data["turnos"] = []
+    for t in data["turnos"]:
+        if isinstance(t, dict):
+            t.setdefault("moto_id", "moto_1")
+            t.setdefault("moto_nome", "Bros 150 Principal")
+            t.setdefault("estabelecimento", "Não informado")
+            t.setdefault("ganho_app", 0.0)
+            t.setdefault("ganho_estab", 0.0)
+            t.setdefault("custo_reserva_km", 0.1201)
+
+    if not isinstance(data.get("manutencoes"), list):
+        data["manutencoes"] = json.loads(json.dumps(HISTORICO_MANUTENCOES_INICIAL))
+
     return data
 
 def load_data(user_key):
@@ -341,7 +385,8 @@ with st.sidebar:
         st.warning("Modo Local (Arquivo JSON)")
     st.caption("Use o mesmo código no navegador do celular e no computador para sincronizar.")
 
-db = st.session_state.db
+db = migrate_data(st.session_state.db)
+st.session_state.db = db
 
 motos_dict = {m["id"]: m for m in db["motos"]}
 if db["moto_ativa_id"] not in motos_dict:
