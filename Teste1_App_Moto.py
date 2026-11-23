@@ -94,14 +94,14 @@ CATALOGO_MOTOS = {
 }
 
 MANUTENCOES_RETROATIVAS = [
-    {"data": "2026-04-10", "moto_id": "moto_1", "hodometro": 58098, "componente": "Bateria (Partida Elétrica)", "oficina": "Poty", "valor_peca": 180.0, "valor_total": 180.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-07-24", "moto_id": "moto_1", "hodometro": 68824, "componente": "Par de Pneus", "oficina": "Amaral", "valor_peca": 288.0, "valor_total": 308.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Limpeza/Regulagem Carburador", "oficina": "Mineiro", "valor_peca": 120.0, "valor_total": 120.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Cabos + Lubrificação", "oficina": "Mineiro", "valor_peca": 30.0, "valor_total": 45.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Pastilha Freio Dianteiro (ESD)", "oficina": "Amaral", "valor_peca": 60.0, "valor_total": 60.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Lona Freio Traseiro", "oficina": "Amaral", "valor_peca": 40.0, "valor_total": 40.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-09-23", "moto_id": "moto_1", "hodometro": 75056, "componente": "Kit Relação / Transmissão", "oficina": "Amaral", "valor_peca": 165.0, "valor_total": 225.0, "obs": "Retroativo pré-ciclo"},
-    {"data": "2026-11-14", "moto_id": "moto_1", "hodometro": 80346, "componente": "Troca de Óleo", "oficina": "Amaral", "valor_peca": 30.0, "valor_total": 34.0, "obs": "Retroativo pré-ciclo"}
+    {"data": "2026-04-10", "moto_id": "moto_1", "hodometro": 58098, "componente": "Bateria (Partida Elétrica)", "oficina": "Poty", "valor_peca": 180.0, "valor_total": 180.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-07-24", "moto_id": "moto_1", "hodometro": 68824, "componente": "Par de Pneus", "oficina": "Amaral", "valor_peca": 288.0, "valor_total": 308.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Limpeza/Regulagem Carburador", "oficina": "Mineiro", "valor_peca": 120.0, "valor_total": 120.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Cabos + Lubrificação", "oficina": "Mineiro", "valor_peca": 30.0, "valor_total": 45.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Pastilha Freio Dianteiro (ESD)", "oficina": "Amaral", "valor_peca": 60.0, "valor_total": 60.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Lona Freio Traseiro", "oficina": "Amaral", "valor_peca": 40.0, "valor_total": 40.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-09-23", "moto_id": "moto_1", "hodometro": 75056, "componente": "Kit Relação / Transmissão", "oficina": "Amaral", "valor_peca": 165.0, "valor_total": 225.0, "obs": "Retroativo pre-ciclo"},
+    {"data": "2026-11-14", "moto_id": "moto_1", "hodometro": 80346, "componente": "Troca de Óleo", "oficina": "Amaral", "valor_peca": 30.0, "valor_total": 34.0, "obs": "Retroativo pre-ciclo"}
 ]
 
 def get_default_data():
@@ -360,13 +360,12 @@ st.caption(
 )
 
 with st.expander("💡 Como funciona o Raio-X? (Guia Rápido em 3 Passos)"):
-    st.markdown(
-        "1. **Garagem:** Ajuste o preço da gasolina, consumo e peças da sua moto para descobrir seu **Custo Real por Km**.
-"
-        "2. **Simular & Orçar:** Antes de aceitar uma entrega ou passar preço para cliente, calcule o **Lucro Líquido Real** já descontando desgaste e combustível.
-"
+    guia_txt = "\n".join([
+        "1. **Garagem:** Ajuste o preço da gasolina, consumo e peças da sua moto para descobrir seu **Custo Real por Km**.",
+        "2. **Simular & Orçar:** Antes de aceitar uma entrega ou passar preço para cliente, calcule o **Lucro Líquido Real** já descontando desgaste e combustível.",
         "3. **Meu Dia & Termômetro CLT:** No fim do turno, lance os km rodados e ganhos. O app separa a **Caixinha da Moto** e mostra se você ganhou acima do **Piso CLT + 30% Periculosidade**."
-    )
+    ])
+    st.markdown(guia_txt)
 
 PISO_CLT_MENSAL = 3254.46
 META_CLT_DIARIA = PISO_CLT_MENSAL / 26.0
@@ -594,8 +593,7 @@ with tab_sim:
 
         txt_ret = f"{label_retirada} {num_ret}".strip() or "Ponto de Coleta"
         txt_ent = f"{label_entrega} {num_ent}".strip() or "Destino"
-        msg_whats = "
-".join([
+        msg_whats = "\n".join([
             "🏍️ *ORÇAMENTO DE ENTREGA*",
             f"📍 *Retirada:* {txt_ret}",
             f"🏁 *Entrega:* {txt_ent}",
@@ -615,7 +613,6 @@ with tab_garagem:
         "⚙️ Config. & Nova Moto"
     ])
 
-    # --- SUB-ABA 3.1: SAÚDE DAS PEÇAS ---
     with sub_pecas:
         st.subheader(f"Desgaste Preventivo — {moto_ativa['apelido']}")
         for idx, p in enumerate(moto_ativa.get("pecas", [])):
@@ -643,7 +640,6 @@ with tab_garagem:
                 st.toast(f"{p['nome']} zerado em {moto_ativa['hodometro']} km!")
                 st.rerun()
 
-    # --- SUB-ABA 3.2: MANUTENÇÕES (DAQUI PRA FRENTE) ---
     with sub_manut:
         st.subheader("Balanço Caixinha: Previsto vs. Gasto Real")
         st.caption(f"Considerando apenas turnos e manutenções a partir de **{DATA_INICIO_CICLO}** (histórico anterior mantido apenas para alertas de km).")
@@ -716,7 +712,6 @@ with tab_garagem:
                 hide_index=True
             )
 
-    # --- SUB-ABA 3.3: ABASTECIMENTOS (GASOLINA PREVISTA X REAL) ---
     with sub_abast:
         st.subheader("Controle de Combustível: Previsto vs. Bomba")
         turnos_ciclo_gas = [
@@ -779,7 +774,6 @@ with tab_garagem:
                 hide_index=True
             )
 
-    # --- SUB-ABA 3.4: CONFIGURAÇÕES & NOVA MOTO ---
     with sub_config:
         st.subheader(f"Parâmetros — {moto_ativa['apelido']}")
         with st.form("form_cfg_moto"):
