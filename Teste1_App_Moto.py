@@ -640,6 +640,29 @@ with tab_garagem:
                 st.toast(f"{p['nome']} zerado em {moto_ativa['hodometro']} km!")
                 st.rerun()
 
+        st.divider()
+        with st.expander("✏️ Editar Custo, Intervalo ou Km de Troca das Peças"):
+            pecas_lista = moto_ativa.get("pecas", [])
+            if pecas_lista:
+                peca_nomes = [p["nome"] for p in pecas_lista]
+                peca_esc = st.selectbox("Escolha o componente para editar:", options=peca_nomes, key="sel_edit_peca")
+                idx_p = peca_nomes.index(peca_esc)
+                p_atual = pecas_lista[idx_p]
+
+                with st.form("form_editar_peca"):
+                    ep1, ep2, ep3 = st.columns(3)
+                    novo_custo_p = ep1.number_input("Valor Base Pago (R$)", value=float(p_atual["custo"]), step=5.0)
+                    novo_interv_p = ep2.number_input("Intervalo (km)", value=int(p_atual["intervalo"]), step=500)
+                    nova_ult_km = ep3.number_input("Km Última Troca", value=int(p_atual["ultima_km"]), step=100)
+
+                    if st.form_submit_button("Atualizar Parâmetros da Peça", use_container_width=True):
+                        pecas_lista[idx_p]["custo"] = float(novo_custo_p)
+                        pecas_lista[idx_p]["intervalo"] = int(novo_interv_p)
+                        pecas_lista[idx_p]["ultima_km"] = int(nova_ult_km)
+                        save_state(user_key, db)
+                        st.success(f"{peca_esc} atualizado com sucesso!")
+                        st.rerun()
+
     with sub_manut:
         st.subheader("Balanço Caixinha: Previsto vs. Gasto Real")
         st.caption(f"Considerando apenas turnos e manutenções a partir de **{DATA_INICIO_CICLO}** (histórico anterior mantido apenas para alertas de km).")
@@ -711,6 +734,53 @@ with tab_garagem:
                 use_container_width=True,
                 hide_index=True
             )
+
+            with st.expander("✏️ Editar ou Excluir um Registro de Manutenção"):
+                indices_m = [i for i, m in enumerate(db["manutencoes"]) if m.get("moto_id") == moto_ativa["id"]]
+                opcoes_m = [
+                    f"{i} | {db['manutencoes'][i]['data']} — {db['manutencoes'][i]['componente']} (Km {db['manutencoes'][i]['hodometro']} | R$ {db['manutencoes'][i]['valor_total']:.2f})"
+                    for i in indices_m
+                ]
+                sel_m = st.selectbox("Selecione o registro:", options=opcoes_m, key="sel_edit_manut")
+                idx_m_edit = int(sel_m.split(" | ")[0])
+                m_reg = db["manutencoes"][idx_m_edit]
+
+                with st.form("form_edit_manut_hist"):
+                    em1, em2, em3 = st.columns(3)
+                    ed_data = em1.text_input("Data (AAAA-MM-DD)", value=str(m_reg["data"]))
+                    ed_odo = em2.number_input("Hodômetro (km)", value=int(m_reg["hodometro"]), step=1)
+                    ed_comp = em3.text_input("Componente / Serviço", value=str(m_reg["componente"]))
+
+                    em4, em5, em6 = st.columns(3)
+                    ed_ofic = em4.text_input("Oficina / Loja", value=str(m_reg["oficina"]))
+                    ed_peca = em5.number_input("Valor Peça (R$)", value=float(m_reg.get("valor_peca", 0.0)), step=5.0)
+                    ed_tot = em6.number_input("Valor Total Pago (R$)", value=float(m_reg["valor_total"]), step=5.0)
+                    ed_obs = st.text_input("Observações", value=str(m_reg.get("obs", "")))
+
+                    col_bm1, col_bm2 = st.columns(2)
+                    salvar_ed = col_bm1.form_submit_button("Salvar Alterações", use_container_width=True)
+                    excluir_ed = col_bm2.form_submit_button("🗑️ Excluir Registro", use_container_width=True)
+
+                    if salvar_ed:
+                        db["manutencoes"][idx_m_edit] = {
+                            "data": ed_data.strip(),
+                            "moto_id": moto_ativa["id"],
+                            "hodometro": int(ed_odo),
+                            "componente": ed_comp.strip(),
+                            "oficina": ed_ofic.strip(),
+                            "valor_peca": float(ed_peca),
+                            "valor_total": float(ed_tot),
+                            "obs": ed_obs.strip()
+                        }
+                        save_state(user_key, db)
+                        st.success("Registro atualizado!")
+                        st.rerun()
+
+                    if excluir_ed:
+                        db["manutencoes"].pop(idx_m_edit)
+                        save_state(user_key, db)
+                        st.toast("Registro removido!")
+                        st.rerun()
 
     with sub_abast:
         st.subheader("Controle de Combustível: Previsto vs. Bomba")
