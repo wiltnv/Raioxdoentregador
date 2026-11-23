@@ -208,6 +208,16 @@ def migrate_data(raw):
     if "manutencoes" not in raw or not isinstance(raw["manutencoes"], list):
         raw["manutencoes"] = [dict(m) for m in MANUTENCOES_RETROATIVAS]
 
+    for m in raw["manutencoes"]:
+        if isinstance(m, dict):
+            m.setdefault("moto_id", raw["moto_ativa_id"])
+            m.setdefault("hodometro", 0)
+            m.setdefault("componente", "Serviço")
+            m.setdefault("oficina", "Não informada")
+            m.setdefault("valor_peca", 0.0)
+            m.setdefault("valor_total", 0.0)
+            m.setdefault("obs", "")
+
     if "abastecimentos" not in raw or not isinstance(raw["abastecimentos"], list):
         raw["abastecimentos"] = []
 
@@ -244,16 +254,19 @@ def load_state(user_key):
 
 def save_state(user_key, data):
     sb = get_supabase()
+    ok_cloud = False
     if sb:
         try:
             sb.table("user_states").upsert({"user_key": user_key, "state_json": data}).execute()
-        except Exception:
-            pass
+            ok_cloud = True
+        except Exception as e:
+            st.error(f"Erro ao salvar na nuvem (Supabase): {e}")
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+    return ok_cloud
 
 def calc_custos_moto(m):
     gas_km = float(m["preco_gasolina"]) / max(float(m["consumo_kml"]), 1.0)
@@ -735,52 +748,49 @@ with tab_garagem:
                 hide_index=True
             )
 
-            with st.expander("✏️ Editar ou Excluir um Registro de Manutenção"):
-                indices_m = [i for i, m in enumerate(db["manutencoes"]) if m.get("moto_id") == moto_ativa["id"]]
-                opcoes_m = [
-                    f"{i} | {db['manutencoes'][i]['data']} — {db['manutencoes'][i]['componente']} (Km {db['manutencoes'][i]['hodometro']} | R$ {db['manutencoes'][i]['valor_total']:.2f})"
-                    for i in indices_m
-                ]
-                sel_m = st.selectbox("Selecione o registro:", options=opcoes_m, key="sel_edit_manut")
-                idx_m_edit = int(sel_m.split(" | ")[0])
-                m_reg = db["manutencoes"][idx_m_edit]
+            st.divider()
+            st.markdown("#### ✏️ Editar ou Excluir um Registro de Manutenção")
+            indices_m = [i for i, m in enumerate(db["manutencoes"]) if m.get("moto_id") == moto_ativa["id"]]
+            opcoes_m = [
+                f"{i} | {db['manutencoes'][i]['data']} — {db['manutencoes'][i]['componente']} (Km {db['manutencoes'][i]['hodometro']} | R$ {db['manutencoes'][i]['valor_total']:.2f})"
+                for i in indices_m
+            ]
+            sel_m = st.selectbox("Selecione o registro para editar ou apagar:", options=opcoes_m, key="sel_edit_manut_web")
+            idx_m_edit = int(sel_m.split(" | ")[0])
+            m_reg = db["manutencoes"][idx_m_edit]
 
-                with st.form("form_edit_manut_hist"):
-                    em1, em2, em3 = st.columns(3)
-                    ed_data = em1.text_input("Data (AAAA-MM-DD)", value=str(m_reg["data"]))
-                    ed_odo = em2.number_input("Hodômetro (km)", value=int(m_reg["hodometro"]), step=1)
-                    ed_comp = em3.text_input("Componente / Serviço", value=str(m_reg["componente"]))
+            em1, em2, em3 = st.columns(3)
+            ed_data = em1.text_input("Data (AAAA-MM-DD)", value=str(m_reg["data"]), key=f"ed_dt_{idx_m_edit}")
+            ed_odo = em2.number_input("Hodômetro (km)", value=int(m_reg["hodometro"]), step=1, key=f"ed_od_{idx_m_edit}")
+            ed_comp = em3.text_input("Componente / Serviço", value=str(m_reg["componente"]), key=f"ed_cp_{idx_m_edit}")
 
-                    em4, em5, em6 = st.columns(3)
-                    ed_ofic = em4.text_input("Oficina / Loja", value=str(m_reg["oficina"]))
-                    ed_peca = em5.number_input("Valor Peça (R$)", value=float(m_reg.get("valor_peca", 0.0)), step=5.0)
-                    ed_tot = em6.number_input("Valor Total Pago (R$)", value=float(m_reg["valor_total"]), step=5.0)
-                    ed_obs = st.text_input("Observações", value=str(m_reg.get("obs", "")))
+            em4, em5, em6 = st.columns(3)
+            ed_ofic = em4.text_input("Oficina / Loja", value=str(m_reg["oficina"]), key=f"ed_of_{idx_m_edit}")
+            ed_peca = em5.number_input("Valor Peça (R$)", value=float(m_reg.get("valor_peca", 0.0)), step=5.0, key=f"ed_pc_{idx_m_edit}")
+            ed_tot = em6.number_input("Valor Total Pago (R$)", value=float(m_reg["valor_total"]), step=5.0, key=f"ed_tt_{idx_m_edit}")
+            ed_obs = st.text_input("Observações", value=str(m_reg.get("obs", "")), key=f"ed_ob_{idx_m_edit}")
 
-                    col_bm1, col_bm2 = st.columns(2)
-                    salvar_ed = col_bm1.form_submit_button("Salvar Alterações", use_container_width=True)
-                    excluir_ed = col_bm2.form_submit_button("🗑️ Excluir Registro", use_container_width=True)
+            col_bm1, col_bm2 = st.columns(2)
+            if col_bm1.button("💾 Salvar Alterações na Nuvem", key=f"btn_save_m_{idx_m_edit}", use_container_width=True):
+                db["manutencoes"][idx_m_edit] = {
+                    "data": ed_data.strip(),
+                    "moto_id": moto_ativa["id"],
+                    "hodometro": int(ed_odo),
+                    "componente": ed_comp.strip(),
+                    "oficina": ed_ofic.strip(),
+                    "valor_peca": float(ed_peca),
+                    "valor_total": float(ed_tot),
+                    "obs": ed_obs.strip()
+                }
+                save_state(user_key, db)
+                st.success("Alterações salvas!")
+                st.rerun()
 
-                    if salvar_ed:
-                        db["manutencoes"][idx_m_edit] = {
-                            "data": ed_data.strip(),
-                            "moto_id": moto_ativa["id"],
-                            "hodometro": int(ed_odo),
-                            "componente": ed_comp.strip(),
-                            "oficina": ed_ofic.strip(),
-                            "valor_peca": float(ed_peca),
-                            "valor_total": float(ed_tot),
-                            "obs": ed_obs.strip()
-                        }
-                        save_state(user_key, db)
-                        st.success("Registro atualizado!")
-                        st.rerun()
-
-                    if excluir_ed:
-                        db["manutencoes"].pop(idx_m_edit)
-                        save_state(user_key, db)
-                        st.toast("Registro removido!")
-                        st.rerun()
+            if col_bm2.button("🗑️ Excluir Registro Definitivamente", key=f"btn_del_m_{idx_m_edit}", type="primary", use_container_width=True):
+                db["manutencoes"].pop(idx_m_edit)
+                save_state(user_key, db)
+                st.warning("Registro excluído!")
+                st.rerun()
 
     with sub_abast:
         st.subheader("Controle de Combustível: Previsto vs. Bomba")
