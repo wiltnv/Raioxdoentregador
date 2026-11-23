@@ -394,10 +394,14 @@ tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
 # ABA 1: MEU DIA (TURNOS)
 # ==========================================
 with tab_hoje:
-    filtro_visao = st.radio("Exibir resultados de:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
+    col_f1, col_f2 = st.columns(2)
+    filtro_visao = col_f1.radio("Moto:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
+    filtro_periodo = col_f2.radio("Período:", ["Todos os Registros", f"Ciclo Atual (Pós-{DATA_INICIO_CICLO})"], horizontal=True)
+
     turnos_filtrados = [
         t for t in db["turnos"]
-        if filtro_visao == "Todas as Motos" or t.get("moto_id") == moto_ativa["id"]
+        if (filtro_visao == "Todas as Motos" or t.get("moto_id") == moto_ativa["id"])
+        and (filtro_periodo == "Todos os Registros" or t["data"] >= DATA_INICIO_CICLO)
     ]
 
     total_km = sum(t["km"] for t in turnos_filtrados)
@@ -678,7 +682,7 @@ with tab_garagem:
 
     with sub_manut:
         st.subheader("Balanço Caixinha: Previsto vs. Gasto Real")
-        st.caption(f"Considerando apenas turnos e manutenções a partir de **{DATA_INICIO_CICLO}** (histórico anterior mantido apenas para alertas de km).")
+        st.caption(f"Comparativo do ciclo iniciado em **{DATA_INICIO_CICLO}** (mesma base da aba Meu Dia quando filtrada pelo Ciclo Atual).")
 
         turnos_ciclo = [
             t for t in db["turnos"]
@@ -693,7 +697,7 @@ with tab_garagem:
         saldo_caixinha_manut = reservado_manut_ciclo - gasto_real_ciclo
 
         bm1, bm2, bm3 = st.columns(3)
-        bm1.metric("Reservado na Caixinha", f"R$ {reservado_manut_ciclo:.2f}")
+        bm1.metric(f"Reservado ({km_ciclo} km)", f"R$ {reservado_manut_ciclo:.2f}")
         bm2.metric("Gasto Real (Pós-22/11)", f"R$ {gasto_real_ciclo:.2f}")
         bm3.metric("Saldo da Reserva", f"R$ {saldo_caixinha_manut:+.2f}")
 
@@ -810,7 +814,7 @@ with tab_garagem:
         saldo_gas = gas_prevista_ciclo - gas_real_bomba
 
         ga1, ga2, ga3 = st.columns(3)
-        ga1.metric("Reservado Gasolina", f"R$ {gas_prevista_ciclo:.2f}")
+        ga1.metric(f"Reservado ({km_ciclo_gas} km)", f"R$ {gas_prevista_ciclo:.2f}")
         ga2.metric("Pago na Bomba", f"R$ {gas_real_bomba:.2f}")
         ga3.metric("Diferença (Previsto - Real)", f"R$ {saldo_gas:+.2f}")
 
