@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import urllib.request
-import urllib.parse
 from datetime import date
+
+try:
+    from supabase import create_client
+    HAS_SUPABASE = True
+except ImportError:
+    HAS_SUPABASE = False
 
 try:
     from streamlit_searchbox import st_searchbox
@@ -18,15 +22,13 @@ try:
 except ImportError:
     HAS_GEO = False
 
-try:
-    from supabase import create_client, Client
-    HAS_SUPABASE_LIB = True
-except ImportError:
-    HAS_SUPABASE_LIB = False
+import urllib.request
+import urllib.parse
 
 st.set_page_config(page_title="Raio-X do Entregador", page_icon="🏍️", layout="centered")
 
 DATA_FILE = "dados_entregador.json"
+DATA_INICIO_CICLO = "2026-11-22"
 
 ESTABELECIMENTOS_LISTA = [
     "Nenhum (Apenas Apps)",
@@ -40,166 +42,179 @@ ESTABELECIMENTOS_LISTA = [
 
 CATALOGO_MOTOS = {
     "Honda NXR 150 Bros ESD 2008 (Carburada)": {
+        "preco_gasolina": 5.99,
         "consumo_kml": 29.0,
         "seguro_anual": 984.08,
         "licenciamento_anual": 174.08,
         "projecao_anual_km": 37286.64,
         "pecas": [
-            {"nome": "Troca de Óleo", "intervalo": 1500, "custo": 34.0},
-            {"nome": "Limpeza/Regulagem Carburador", "intervalo": 12000, "custo": 120.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 70.0},
-            {"nome": "Pastilha Freio Dianteiro (ESD)", "intervalo": 12000, "custo": 65.0},
-            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "custo": 65.0},
-            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "custo": 120.0},
-            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "custo": 225.0},
-            {"nome": "Par de Pneus", "intervalo": 30000, "custo": 550.0},
-            {"nome": "Bateria (Partida Elétrica)", "intervalo": 50000, "custo": 160.0}
+            {"nome": "Troca de Óleo", "intervalo": 1500, "ultima_km": 80346, "custo": 34.0},
+            {"nome": "Limpeza/Regulagem Carburador", "intervalo": 12000, "ultima_km": 70050, "custo": 120.0},
+            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "ultima_km": 51560, "custo": 70.0},
+            {"nome": "Pastilha Freio Dianteiro (ESD)", "intervalo": 12000, "ultima_km": 74545, "custo": 65.0},
+            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "ultima_km": 74545, "custo": 65.0},
+            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "ultima_km": 70050, "custo": 120.0},
+            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "ultima_km": 75056, "custo": 225.0},
+            {"nome": "Par de Pneus", "intervalo": 30000, "ultima_km": 68824, "custo": 550.0},
+            {"nome": "Bateria (Partida Elétrica)", "intervalo": 50000, "ultima_km": 58098, "custo": 160.0}
         ]
     },
-    "Honda CG 160 Titan / Fan / Start (Flex)": {
+    "Honda CG 160 (Titan / Fan / Start)": {
+        "preco_gasolina": 5.99,
         "consumo_kml": 35.0,
         "seguro_anual": 1100.00,
-        "licenciamento_anual": 380.00,
-        "projecao_anual_km": 40000.0,
+        "licenciamento_anual": 174.08,
+        "projecao_anual_km": 37286.64,
         "pecas": [
-            {"nome": "Troca de Óleo", "intervalo": 1500, "custo": 38.0},
-            {"nome": "Limpeza Bico Injetor / Corpo TBI", "intervalo": 15000, "custo": 110.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 75.0},
-            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "custo": 60.0},
-            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "custo": 60.0},
-            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "custo": 100.0},
-            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "custo": 190.0},
-            {"nome": "Par de Pneus", "intervalo": 30000, "custo": 520.0},
-            {"nome": "Bateria", "intervalo": 50000, "custo": 170.0}
+            {"nome": "Troca de Óleo", "intervalo": 1500, "ultima_km": 0, "custo": 38.0},
+            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "ultima_km": 0, "custo": 65.0},
+            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "ultima_km": 0, "custo": 55.0},
+            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "ultima_km": 0, "custo": 55.0},
+            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "ultima_km": 0, "custo": 190.0},
+            {"nome": "Par de Pneus", "intervalo": 30000, "ultima_km": 0, "custo": 520.0},
+            {"nome": "Bateria", "intervalo": 50000, "ultima_km": 0, "custo": 160.0}
         ]
     },
-    "Yamaha Factor / Fazer 150 (Flex)": {
+    "Yamaha Factor / Fazer 150": {
+        "preco_gasolina": 5.99,
         "consumo_kml": 36.0,
         "seguro_anual": 1050.00,
-        "licenciamento_anual": 380.00,
-        "projecao_anual_km": 40000.0,
+        "licenciamento_anual": 174.08,
+        "projecao_anual_km": 37286.64,
         "pecas": [
-            {"nome": "Troca de Óleo + Filtro", "intervalo": 2000, "custo": 48.0},
-            {"nome": "Limpeza Sistema Injeção", "intervalo": 15000, "custo": 110.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 80.0},
-            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "custo": 65.0},
-            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "custo": 65.0},
-            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "custo": 100.0},
-            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "custo": 210.0},
-            {"nome": "Par de Pneus", "intervalo": 30000, "custo": 530.0},
-            {"nome": "Bateria", "intervalo": 50000, "custo": 170.0}
-        ]
-    },
-    "Honda NXR 160 Bros (Flex)": {
-        "consumo_kml": 32.0,
-        "seguro_anual": 1150.00,
-        "licenciamento_anual": 390.00,
-        "projecao_anual_km": 38000.0,
-        "pecas": [
-            {"nome": "Troca de Óleo", "intervalo": 1500, "custo": 38.0},
-            {"nome": "Limpeza Sistema Injeção", "intervalo": 15000, "custo": 120.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 80.0},
-            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "custo": 65.0},
-            {"nome": "Pastilha/Lona Freio Traseiro", "intervalo": 15000, "custo": 65.0},
-            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "custo": 110.0},
-            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "custo": 230.0},
-            {"nome": "Par de Pneus", "intervalo": 30000, "custo": 580.0},
-            {"nome": "Bateria", "intervalo": 50000, "custo": 170.0}
-        ]
-    },
-    "Yamaha Fazer / Lander 250": {
-        "consumo_kml": 27.0,
-        "seguro_anual": 1400.00,
-        "licenciamento_anual": 480.00,
-        "projecao_anual_km": 38000.0,
-        "pecas": [
-            {"nome": "Troca de Óleo + Filtro", "intervalo": 2500, "custo": 65.0},
-            {"nome": "Limpeza Sistema Injeção", "intervalo": 15000, "custo": 140.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 95.0},
-            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "custo": 75.0},
-            {"nome": "Pastilha Freio Traseiro", "intervalo": 15000, "custo": 75.0},
-            {"nome": "Cabos + Lubrificação", "intervalo": 15000, "custo": 120.0},
-            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "custo": 290.0},
-            {"nome": "Par de Pneus", "intervalo": 25000, "custo": 750.0},
-            {"nome": "Bateria", "intervalo": 50000, "custo": 210.0}
-        ]
-    },
-    "Personalizada (Zerar Valores)": {
-        "consumo_kml": 30.0,
-        "seguro_anual": 1000.00,
-        "licenciamento_anual": 350.00,
-        "projecao_anual_km": 36000.0,
-        "pecas": [
-            {"nome": "Troca de Óleo", "intervalo": 1500, "custo": 40.0},
-            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "custo": 75.0},
-            {"nome": "Freio Dianteiro", "intervalo": 12000, "custo": 65.0},
-            {"nome": "Freio Traseiro", "intervalo": 15000, "custo": 65.0},
-            {"nome": "Kit Relação", "intervalo": 20000, "custo": 200.0},
-            {"nome": "Par de Pneus", "intervalo": 30000, "custo": 550.0},
-            {"nome": "Bateria", "intervalo": 50000, "custo": 170.0}
+            {"nome": "Troca de Óleo", "intervalo": 1500, "ultima_km": 0, "custo": 38.0},
+            {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "ultima_km": 0, "custo": 70.0},
+            {"nome": "Pastilha Freio Dianteiro", "intervalo": 12000, "ultima_km": 0, "custo": 60.0},
+            {"nome": "Lona Freio Traseiro", "intervalo": 15000, "ultima_km": 0, "custo": 60.0},
+            {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "ultima_km": 0, "custo": 200.0},
+            {"nome": "Par de Pneus", "intervalo": 30000, "ultima_km": 0, "custo": 530.0},
+            {"nome": "Bateria", "intervalo": 50000, "ultima_km": 0, "custo": 165.0}
         ]
     }
 }
 
-HISTORICO_MANUTENCOES_INICIAL = [
-    {"id": "m1", "moto_id": "moto_1", "data": "2026-04-10", "hodometro": 58098, "componente": "Bateria (Partida Elétrica)", "oficina": "Poty", "valor_peca": 180.0, "valor_total": 180.0, "obs": "Troca preventiva"},
-    {"id": "m2", "moto_id": "moto_1", "data": "2026-07-24", "hodometro": 68824, "componente": "Par de Pneus", "oficina": "Amaral", "valor_peca": 288.0, "valor_total": 308.0, "obs": "Dianteiro + Traseiro"},
-    {"id": "m3", "moto_id": "moto_1", "data": "2026-08-05", "hodometro": 70050, "componente": "Limpeza/Regulagem Carburador", "oficina": "Mineiro", "valor_peca": 120.0, "valor_total": 120.0, "obs": "Limpeza e acerto"},
-    {"id": "m4", "moto_id": "moto_1", "data": "2026-08-05", "hodometro": 70050, "componente": "Cabos + Lubrificação", "oficina": "Mineiro", "valor_peca": 30.0, "valor_total": 45.0, "obs": "Cabo acelerador"},
-    {"id": "m5", "moto_id": "moto_1", "data": "2026-09-18", "hodometro": 74545, "componente": "Pastilha Freio Dianteiro (ESD)", "oficina": "Amaral", "valor_peca": 60.0, "valor_total": 60.0, "obs": "Pastilha dianteira"},
-    {"id": "m6", "moto_id": "moto_1", "data": "2026-09-18", "hodometro": 74545, "componente": "Lona Freio Traseiro", "oficina": "Amaral", "valor_peca": 60.0, "valor_total": 40.0, "obs": "Lona traseira"},
-    {"id": "m7", "moto_id": "moto_1", "data": "2026-09-23", "hodometro": 75056, "componente": "Kit Relação / Transmissão", "oficina": "Amaral", "valor_peca": 165.0, "valor_total": 225.0, "obs": "Kit completo"},
-    {"id": "m8", "moto_id": "moto_1", "data": "2026-11-14", "hodometro": 80346, "componente": "Troca de Óleo", "oficina": "Amaral", "valor_peca": 30.0, "valor_total": 34.0, "obs": "Óleo 1L + troca"}
+MANUTENCOES_RETROATIVAS = [
+    {"data": "2026-04-10", "moto_id": "moto_1", "hodometro": 58098, "componente": "Bateria (Partida Elétrica)", "oficina": "Poty", "valor_peca": 180.0, "valor_total": 180.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-07-24", "moto_id": "moto_1", "hodometro": 68824, "componente": "Par de Pneus", "oficina": "Amaral", "valor_peca": 288.0, "valor_total": 308.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Limpeza/Regulagem Carburador", "oficina": "Mineiro", "valor_peca": 120.0, "valor_total": 120.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-08-05", "moto_id": "moto_1", "hodometro": 70050, "componente": "Cabos + Lubrificação", "oficina": "Mineiro", "valor_peca": 30.0, "valor_total": 45.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Pastilha Freio Dianteiro (ESD)", "oficina": "Amaral", "valor_peca": 60.0, "valor_total": 60.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-09-18", "moto_id": "moto_1", "hodometro": 74545, "componente": "Lona Freio Traseiro", "oficina": "Amaral", "valor_peca": 40.0, "valor_total": 40.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-09-23", "moto_id": "moto_1", "hodometro": 75056, "componente": "Kit Relação / Transmissão", "oficina": "Amaral", "valor_peca": 165.0, "valor_total": 225.0, "obs": "Retroativo pré-ciclo"},
+    {"data": "2026-11-14", "moto_id": "moto_1", "hodometro": 80346, "componente": "Troca de Óleo", "oficina": "Amaral", "valor_peca": 30.0, "valor_total": 34.0, "obs": "Retroativo pré-ciclo"}
 ]
 
-DEFAULT_DATA = {
-    "moto_ativa_id": "moto_1",
-    "motos": [
-        {
-            "id": "moto_1",
-            "apelido": "Bros 150 Principal",
-            "modelo": "Honda NXR 150 Bros ESD 2008 (Carburada)",
-            "hodometro": 81185,
-            "preco_gasolina": 5.99,
-            "consumo_kml": 29.0,
-            "seguro_anual": 984.08,
-            "licenciamento_anual": 174.08,
-            "projecao_anual_km": 37286.64,
-            "pecas": [
-                {"nome": "Troca de Óleo", "intervalo": 1500, "ultima_km": 80346, "custo": 34.0},
-                {"nome": "Limpeza/Regulagem Carburador", "intervalo": 12000, "ultima_km": 70050, "custo": 120.0},
-                {"nome": "Filtro de Ar + Vela", "intervalo": 12000, "ultima_km": 51560, "custo": 70.0},
-                {"nome": "Pastilha Freio Dianteiro (ESD)", "intervalo": 12000, "ultima_km": 74545, "custo": 65.0},
-                {"nome": "Lona Freio Traseiro", "intervalo": 15000, "ultima_km": 74545, "custo": 65.0},
-                {"nome": "Cabos + Lubrificação", "intervalo": 15000, "ultima_km": 70050, "custo": 120.0},
-                {"nome": "Kit Relação / Transmissão", "intervalo": 20000, "ultima_km": 75056, "custo": 225.0},
-                {"nome": "Par de Pneus", "intervalo": 30000, "ultima_km": 68824, "custo": 550.0},
-                {"nome": "Bateria (Partida Elétrica)", "intervalo": 50000, "ultima_km": 58098, "custo": 160.0}
-            ]
-        }
-    ],
-    "turnos": [
-        {
-            "data": "2026-11-21",
-            "moto_id": "moto_1",
-            "moto_nome": "Bros 150 Principal",
-            "km_ini": 81011,
-            "km_fim": 81185,
-            "km": 174,
-            "ganho_app": 0.0,
-            "estabelecimento": "Sta. Efigênia / Golden",
-            "ganho_estab": 348.0,
-            "bruto": 348.0,
-            "extras": 0.0,
-            "custo_km": 0.3266,
-            "custo_reserva_km": 0.1201
-        }
-    ],
-    "manutencoes": HISTORICO_MANUTENCOES_INICIAL
-}
+def get_default_data():
+    base = CATALOGO_MOTOS["Honda NXR 150 Bros ESD 2008 (Carburada)"]
+    return {
+        "moto_ativa_id": "moto_1",
+        "motos": [
+            {
+                "id": "moto_1",
+                "apelido": "Bros 150 ESD 2008",
+                "modelo": "Honda NXR 150 Bros ESD 2008 (Carburada)",
+                "hodometro": 81185,
+                "preco_gasolina": base["preco_gasolina"],
+                "consumo_kml": base["consumo_kml"],
+                "seguro_anual": base["seguro_anual"],
+                "licenciamento_anual": base["licenciamento_anual"],
+                "projecao_anual_km": base["projecao_anual_km"],
+                "pecas": [dict(p) for p in base["pecas"]]
+            }
+        ],
+        "turnos": [
+            {
+                "data": "2026-11-21",
+                "moto_id": "moto_1",
+                "km_ini": 81011,
+                "km_fim": 81185,
+                "km": 174,
+                "ganho_app": 0.0,
+                "estabelecimento": "Sta. Efigênia / Golden",
+                "ganho_estab": 348.0,
+                "bruto": 348.0,
+                "extras": 0.0,
+                "custo_km": 0.3266
+            }
+        ],
+        "manutencoes": [dict(m) for m in MANUTENCOES_RETROATIVAS],
+        "abastecimentos": []
+    }
+
+def migrate_data(raw):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return get_default_data()
+    if not isinstance(raw, dict):
+        return get_default_data()
+
+    default = get_default_data()
+
+    if "motos" not in raw or not isinstance(raw["motos"], list) or len(raw["motos"]) == 0:
+        if "moto" in raw and isinstance(raw["moto"], dict):
+            m_old = raw["moto"]
+            raw["motos"] = [{
+                "id": "moto_1",
+                "apelido": m_old.get("modelo", "Moto Principal"),
+                "modelo": m_old.get("modelo", "Honda NXR 150 Bros ESD 2008 (Carburada)"),
+                "hodometro": int(m_old.get("hodometro", 81185)),
+                "preco_gasolina": float(m_old.get("preco_gasolina", 5.99)),
+                "consumo_kml": float(m_old.get("consumo_kml", 29.0)),
+                "seguro_anual": float(m_old.get("seguro_anual", 984.08)),
+                "licenciamento_anual": float(m_old.get("licenciamento_anual", 174.08)),
+                "projecao_anual_km": float(m_old.get("projecao_anual_km", 37286.64)),
+                "pecas": raw.get("pecas", default["motos"][0]["pecas"])
+            }]
+        else:
+            raw["motos"] = default["motos"]
+
+    valid_motos = []
+    for idx, m in enumerate(raw["motos"]):
+        if isinstance(m, str):
+            try:
+                m = json.loads(m)
+            except Exception:
+                continue
+        if isinstance(m, dict):
+            m.setdefault("id", f"moto_{idx+1}")
+            m.setdefault("apelido", f"Moto {idx+1}")
+            m.setdefault("modelo", "Personalizada")
+            m.setdefault("hodometro", 0)
+            m.setdefault("preco_gasolina", 5.99)
+            m.setdefault("consumo_kml", 30.0)
+            m.setdefault("seguro_anual", 900.0)
+            m.setdefault("licenciamento_anual", 174.08)
+            m.setdefault("projecao_anual_km", 36000.0)
+            m.setdefault("pecas", [])
+            valid_motos.append(m)
+
+    raw["motos"] = valid_motos if valid_motos else default["motos"]
+    ids_validos = [m["id"] for m in raw["motos"]]
+    if raw.get("moto_ativa_id") not in ids_validos:
+        raw["moto_ativa_id"] = ids_validos[0]
+
+    if "turnos" not in raw or not isinstance(raw["turnos"], list):
+        raw["turnos"] = []
+    for t in raw["turnos"]:
+        if isinstance(t, dict):
+            t.setdefault("moto_id", raw["moto_ativa_id"])
+            t.setdefault("estabelecimento", "Não informado")
+            t.setdefault("ganho_app", 0.0)
+            t.setdefault("ganho_estab", 0.0)
+            t.setdefault("extras", 0.0)
+
+    if "manutencoes" not in raw or not isinstance(raw["manutencoes"], list):
+        raw["manutencoes"] = [dict(m) for m in MANUTENCOES_RETROATIVAS]
+
+    if "abastecimentos" not in raw or not isinstance(raw["abastecimentos"], list):
+        raw["abastecimentos"] = []
+
+    return raw
 
 def get_supabase():
-    if not HAS_SUPABASE_LIB:
+    if not HAS_SUPABASE:
         return None
     try:
         url = st.secrets.get("SUPABASE_URL", "")
@@ -210,271 +225,199 @@ def get_supabase():
         pass
     return None
 
-def migrate_data(data):
-    # Caso o JSON venha como string do banco, converte para dict
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except Exception:
-            data = {}
-    if not isinstance(data, dict):
-        return json.loads(json.dumps(DEFAULT_DATA))
-
-    # Migração da versão v1 (chave 'moto' única) para v2 ('motos' lista)
-    if "motos" not in data and "moto" in data and isinstance(data["moto"], dict):
-        old_moto = data.pop("moto")
-        old_pecas = data.pop("pecas", [])
-        data["moto_ativa_id"] = "moto_1"
-        data["motos"] = [{
-            "id": "moto_1",
-            "apelido": "Moto Principal",
-            "modelo": old_moto.get("modelo", "Honda NXR 150 Bros ESD 2008"),
-            "hodometro": old_moto.get("hodometro", 81185),
-            "preco_gasolina": old_moto.get("preco_gasolina", 5.99),
-            "consumo_kml": old_moto.get("consumo_kml", 29.0),
-            "seguro_anual": old_moto.get("seguro_anual", 984.08),
-            "licenciamento_anual": old_moto.get("licenciamento_anual", 174.08),
-            "projecao_anual_km": old_moto.get("projecao_anual_km", 37286.64),
-            "pecas": old_pecas if isinstance(old_pecas, list) else []
-        }]
-
-    # Blindagem contra formato inesperado em db["motos"] (ex: dict ou lista de strings)
-    motos_raw = data.get("motos")
-    if isinstance(motos_raw, dict):
-        motos_list = list(motos_raw.values())
-    elif isinstance(motos_raw, list):
-        motos_list = [m for m in motos_raw if isinstance(m, dict)]
-    else:
-        motos_list = []
-
-    if not motos_list:
-        motos_list = json.loads(json.dumps(DEFAULT_DATA["motos"]))
-
-    for idx, m in enumerate(motos_list):
-        m.setdefault("id", f"moto_{idx + 1}")
-        m.setdefault("apelido", f"Moto {idx + 1}")
-        m.setdefault("modelo", "Honda NXR 150 Bros ESD 2008 (Carburada)")
-        m.setdefault("hodometro", 81185)
-        m.setdefault("preco_gasolina", 5.99)
-        m.setdefault("consumo_kml", 29.0)
-        m.setdefault("seguro_anual", 984.08)
-        m.setdefault("licenciamento_anual", 174.08)
-        m.setdefault("projecao_anual_km", 37286.64)
-        if not isinstance(m.get("pecas"), list):
-            m["pecas"] = json.loads(json.dumps(DEFAULT_DATA["motos"][0]["pecas"]))
-
-    data["motos"] = motos_list
-    data.setdefault("moto_ativa_id", motos_list[0]["id"])
-
-    if not isinstance(data.get("turnos"), list):
-        data["turnos"] = []
-    for t in data["turnos"]:
-        if isinstance(t, dict):
-            t.setdefault("moto_id", "moto_1")
-            t.setdefault("moto_nome", "Bros 150 Principal")
-            t.setdefault("estabelecimento", "Não informado")
-            t.setdefault("ganho_app", 0.0)
-            t.setdefault("ganho_estab", 0.0)
-            t.setdefault("custo_reserva_km", 0.1201)
-
-    if not isinstance(data.get("manutencoes"), list):
-        data["manutencoes"] = json.loads(json.dumps(HISTORICO_MANUTENCOES_INICIAL))
-
-    return data
-
-def load_data(user_key):
+def load_state(user_key):
     sb = get_supabase()
-    if sb and user_key:
+    if sb:
         try:
             res = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
             if res.data and len(res.data) > 0:
                 return migrate_data(res.data[0]["state_json"]), True
-            else:
-                initial = migrate_data(json.loads(json.dumps(DEFAULT_DATA)))
-                sb.table("user_states").upsert({"user_key": user_key, "state_json": initial}).execute()
-                return initial, True
         except Exception:
             pass
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return migrate_data(json.load(f)), False
-    return migrate_data(json.loads(json.dumps(DEFAULT_DATA))), False
-
-def save_data(data, user_key):
-    sb = get_supabase()
-    if sb and user_key:
         try:
-            sb.table("user_states").upsert({"user_key": user_key, "state_json": data}).execute()
-            return True
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return migrate_data(json.load(f)), False
         except Exception:
             pass
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return False
+    return get_default_data(), bool(sb)
 
-def buscar_enderecos_online(termo):
-    if not termo or len(termo.strip()) < 3:
+def save_state(user_key, data):
+    sb = get_supabase()
+    if sb:
+        try:
+            sb.table("user_states").upsert({"user_key": user_key, "state_json": data}).execute()
+        except Exception:
+            pass
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def calc_custos_moto(m):
+    gas_km = float(m["preco_gasolina"]) / max(float(m["consumo_kml"]), 1.0)
+    fixos_km = (float(m["seguro_anual"]) + float(m["licenciamento_anual"])) / max(float(m["projecao_anual_km"]), 1.0)
+    pecas_km = sum(float(p["custo"]) / max(float(p["intervalo"]), 1.0) for p in m.get("pecas", []))
+    reserva_km = fixos_km + pecas_km
+    total_km = gas_km + reserva_km
+    return gas_km, reserva_km, total_km
+
+def buscar_enderecos_online(query):
+    if not query or len(query.strip()) < 3:
         return []
     resultados = []
     try:
-        query = urllib.parse.quote(termo.strip())
-        url = f"https://photon.komoot.io/api/?q={query}&limit=6"
-        req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        q_enc = urllib.parse.quote(query.strip())
+        url = f"https://photon.komoot.io/api/?q={q_enc}&limit=5&lang=pt&lat=-22.357&lon=-47.384"
+        req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregador/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             for feat in data.get("features", []):
                 props = feat.get("properties", {})
-                if props.get("countrycode", "").upper() not in ["BR", ""]:
-                    continue
                 coords = feat.get("geometry", {}).get("coordinates", [])
-                rua = props.get("street") or props.get("name") or ""
-                numero = props.get("housenumber") or ""
-                bairro = props.get("district") or props.get("suburb") or ""
-                cidade = props.get("city") or props.get("town") or props.get("municipality") or ""
-                estado = props.get("state") or ""
-                partes = []
-                if rua:
-                    partes.append(f"{rua}, {numero}" if numero else rua)
-                if bairro:
-                    partes.append(bairro)
-                if cidade:
-                    partes.append(f"{cidade} - {estado}" if estado else cidade)
-                label = " | ".join(partes) if partes else props.get("name", "Local encontrado")
-                if len(coords) == 2:
-                    resultados.append((label, {"lat": coords[1], "lon": coords[0], "label": label}))
+                if props.get("countrycode", "BR") != "BR":
+                    continue
+                partes = [
+                    props.get("street") or props.get("name", ""),
+                    props.get("housenumber", ""),
+                    props.get("district", ""),
+                    props.get("city", ""),
+                    props.get("state", "")
+                ]
+                label = ", ".join([p for p in partes if p])
+                if label and len(coords) == 2:
+                    resultados.append((label, (coords[1], coords[0])))
     except Exception:
         pass
     return resultados
 
-def calcular_rota_osrm(lat1, lon1, lat2, lon2):
+def calcular_rota_osrm(coord1, coord2):
     try:
+        lat1, lon1 = coord1
+        lat2, lon2 = coord2
         url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
-        req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregador/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("code") == "Ok" and data.get("routes"):
-                rota = data["routes"][0]
-                return round(rota["distance"] / 1000.0, 2), round(rota["duration"] / 60.0)
+                r = data["routes"][0]
+                return round(r["distance"] / 1000.0, 2), round(r["duration"] / 60.0)
     except Exception:
         pass
     return None, None
 
-def calc_custos_moto(m):
-    c_gas = m["preco_gasolina"] / m["consumo_kml"]
-    c_fixos = (m["seguro_anual"] + m["licenciamento_anual"]) / m["projecao_anual_km"]
-    c_pecas = sum(p["custo"] / p["intervalo"] for p in m["pecas"])
-    c_reserva = c_fixos + c_pecas
-    return c_gas, c_fixos, c_pecas, c_reserva, (c_gas + c_reserva)
-
-default_key = ""
-try:
-    default_key = st.secrets.get("DEFAULT_USER_KEY", "wil_bros150")
-except Exception:
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("☁️ Sincronização")
     default_key = "wil_bros150"
+    try:
+        default_key = st.secrets.get("DEFAULT_USER_KEY", "wil_bros150")
+    except Exception:
+        pass
+    user_key = st.text_input("Código da Conta:", value=default_key)
+    if st.button("Recarregar Dados da Nuvem", use_container_width=True):
+        st.session_state.pop("db", None)
+        st.rerun()
+
+if "db" not in st.session_state or st.session_state.get("loaded_key") != user_key:
+    loaded_db, cloud_ok = load_state(user_key)
+    st.session_state.db = migrate_data(loaded_db)
+    st.session_state.loaded_key = user_key
+    st.session_state.cloud_ok = cloud_ok
+else:
+    st.session_state.db = migrate_data(st.session_state.db)
+
+db = st.session_state.db
 
 with st.sidebar:
-    st.header("☁️ Conta e Sincronização")
-    user_key = st.text_input("Código da Conta (PC e Celular):", value=default_key)
-    if "loaded_user_key" not in st.session_state or st.session_state.loaded_user_key != user_key:
-        st.session_state.db, st.session_state.cloud_ok = load_data(user_key)
-        st.session_state.loaded_user_key = user_key
-
     if st.session_state.get("cloud_ok"):
         st.success("Conectado ao Supabase (Nuvem Ativa)")
     else:
         st.warning("Modo Local (Arquivo JSON)")
-    st.caption("Use o mesmo código no navegador do celular e no computador para sincronizar.")
 
-db = migrate_data(st.session_state.db)
-st.session_state.db = db
-
+# --- HEADER & MOTO ATIVA ---
 motos_dict = {m["id"]: m for m in db["motos"]}
-if db["moto_ativa_id"] not in motos_dict:
-    db["moto_ativa_id"] = db["motos"][0]["id"]
+col_t1, col_t2 = st.columns([1.6, 1])
+col_t1.title("🏍️ Raio-X do Entregador")
+moto_escolhida_id = col_t2.selectbox(
+    "Moto Ativa no Turno:",
+    options=list(motos_dict.keys()),
+    format_func=lambda mid: motos_dict[mid]["apelido"],
+    index=list(motos_dict.keys()).index(db["moto_ativa_id"])
+)
+if moto_escolhida_id != db["moto_ativa_id"]:
+    db["moto_ativa_id"] = moto_escolhida_id
+    save_state(user_key, db)
+    st.rerun()
 
-st.title("🏍️ Raio-X do Entregador")
+moto_ativa = motos_dict[db["moto_ativa_id"]]
+custo_gas_km, custo_reserva_km, custo_total_km = calc_custos_moto(moto_ativa)
 
-with st.expander("🧭 Como funciona este aplicativo? (Guia Rápido em 3 Passos)", expanded=False):
-    st.markdown("""
-    1. **Configure sua moto na aba `🔧 3. Garagem & Manutenções`:** Informe o hodômetro atual, preço da gasolina e consumo médio. O app calcula quanto sua moto custa por quilômetro rodado (combustível + desgaste de peças + seguro/doc).
-    2. **Antes de aceitar uma corrida, use `⚡ 2. Simular & Orçar`:** Descubra o lucro líquido real descontando o desgaste da moto ou gere um orçamento pronto para enviar ao cliente no WhatsApp.
-    3. **No fim do expediente, feche o dia em `📊 1. Meu Dia (Turnos)`:** O sistema separa automaticamente sua **Caixinha da Moto** (dinheiro sagrado para gasolina e oficina) e mostra em **`⚖️ 4. Termômetro CLT`** se você está ganhando acima ou abaixo de um emprego registrado com 30% de periculosidade.
-    """)
+st.caption(
+    f"**{moto_ativa['apelido']}** • Hodômetro: **{int(moto_ativa['hodometro']):,} km** • "
+    f"Custo Real: **R$ {custo_total_km:.3f}/km** (Gasolina R$ {custo_gas_km:.3f} + Reserva R$ {custo_reserva_km:.3f})"
+)
 
-col_top1, col_top2 = st.columns([1.4, 1])
-with col_top1:
-    moto_ids = list(motos_dict.keys())
-    idx_ativa = moto_ids.index(db["moto_ativa_id"])
-    nova_ativa_id = st.selectbox(
-        "Moto Ativa no Turno:",
-        options=moto_ids,
-        index=idx_ativa,
-        format_func=lambda mid: f"{motos_dict[mid]['apelido']} ({motos_dict[mid]['hodometro']:,} km)"
+with st.expander("💡 Como funciona o Raio-X? (Guia Rápido em 3 Passos)"):
+    st.markdown(
+        "1. **Garagem:** Ajuste o preço da gasolina, consumo e peças da sua moto para descobrir seu **Custo Real por Km**.
+"
+        "2. **Simular & Orçar:** Antes de aceitar uma entrega ou passar preço para cliente, calcule o **Lucro Líquido Real** já descontando desgaste e combustível.
+"
+        "3. **Meu Dia & Termômetro CLT:** No fim do turno, lance os km rodados e ganhos. O app separa a **Caixinha da Moto** e mostra se você ganhou acima do **Piso CLT + 30% Periculosidade**."
     )
-    if nova_ativa_id != db["moto_ativa_id"]:
-        db["moto_ativa_id"] = nova_ativa_id
-        save_data(db, user_key)
-        st.rerun()
-
-moto = motos_dict[db["moto_ativa_id"]]
-custo_gas_km, custo_fixos_km, custo_pecas_km, custo_reserva_km, custo_total_km = calc_custos_moto(moto)
-
-with col_top2:
-    st.metric("Custo Real desta Moto", f"R$ {custo_total_km:.3f}/km", delta=f"Reserva: R$ {custo_reserva_km:.3f}/km", delta_color="off")
 
 PISO_CLT_MENSAL = 3254.46
 META_CLT_DIARIA = PISO_CLT_MENSAL / 26.0
 
 tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
-    "📊 1. Meu Dia (Turnos)",
+    "📊 1. Meu Dia",
     "⚡ 2. Simular & Orçar",
-    "🔧 3. Garagem & Manutenções",
+    "🔧 3. Garagem & Custos",
     "⚖️ 4. Termômetro CLT"
 ])
 
+# ==========================================
+# ABA 1: MEU DIA (TURNOS)
+# ==========================================
 with tab_hoje:
-    filtro_visao = st.radio(
-        "Exibir resultados de:",
-        options=["Apenas Moto Ativa", "Todas as Motos (Consolidado)"],
-        horizontal=True
-    )
-
+    filtro_visao = st.radio("Exibir resultados de:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
     turnos_filtrados = [
         t for t in db["turnos"]
-        if filtro_visao == "Todas as Motos (Consolidado)" or t.get("moto_id", "moto_1") == moto["id"]
+        if filtro_visao == "Todas as Motos" or t.get("moto_id") == moto_ativa["id"]
     ]
 
     total_km = sum(t["km"] for t in turnos_filtrados)
     total_bruto = sum(t["bruto"] for t in turnos_filtrados)
-    total_extras = sum(t["extras"] for t in turnos_filtrados)
+    total_extras = sum(t.get("extras", 0.0) for t in turnos_filtrados)
 
-    total_custo_op = 0.0
-    total_gas_est = 0.0
-    total_reserva_est = 0.0
+    total_gas = 0.0
+    total_reserva = 0.0
     for t in turnos_filtrados:
-        m_ref = motos_dict.get(t.get("moto_id", "moto_1"), moto)
-        cg, _, _, cr, ct = calc_custos_moto(m_ref)
-        c_usado = t.get("custo_km", ct)
-        r_usado = t.get("custo_reserva_km", cr)
-        total_custo_op += t["km"] * c_usado
-        total_reserva_est += t["km"] * r_usado
-        total_gas_est += t["km"] * max(c_usado - r_usado, cg)
+        m_ref = motos_dict.get(t.get("moto_id"), moto_ativa)
+        g_km, r_km, _ = calc_custos_moto(m_ref)
+        total_gas += t["km"] * g_km
+        total_reserva += t["km"] * r_km
 
-    lucro_liquido = total_bruto - total_custo_op - total_extras
+    lucro_liquido = total_bruto - total_gas - total_reserva - total_extras
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Lucro Líquido Real", f"R$ {lucro_liquido:.2f}")
     c2.metric("Faturamento Bruto", f"R$ {total_bruto:.2f}")
     c3.metric("Km Rodados", f"{total_km:,} km")
 
-    st.info(f"💰 **Caixinha da Moto (Não Gastar):** Separe **R$ {total_custo_op:.2f}** (R$ {total_gas_est:.2f} Gasolina + R$ {total_reserva_est:.2f} Reserva Peças/Fixos)")
+    st.info(
+        f"💰 **Caixinha da Moto (Não Gastar):** Separe **R$ {total_gas + total_reserva:.2f}** "
+        f"(**R$ {total_gas:.2f}** Gasolina + **R$ {total_reserva:.2f}** Reserva Manutenção/Fixos)"
+    )
 
     with st.expander("➕ Registrar Novo Turno (Fechamento Rápido)", expanded=True):
         with st.form("form_turno"):
             col_d, col1, col2 = st.columns([1.2, 1, 1])
             data_turno = col_d.date_input("Data", value=date.today())
-            km_ini = col1.number_input("Km Inicial", value=int(moto["hodometro"]), step=1)
-            km_fim = col2.number_input("Km Final", value=int(moto["hodometro"]), step=1)
+            km_ini = col1.number_input("Km Inicial", value=int(moto_ativa["hodometro"]), step=1)
+            km_fim = col2.number_input("Km Final", value=int(moto_ativa["hodometro"]), step=1)
 
             col3, col4 = st.columns(2)
             ganho_app = col3.number_input("Ganhos Apps / iFood-Bee (R$)", min_value=0.0, step=5.0)
@@ -490,436 +433,445 @@ with tab_hoje:
                 if dist <= 0:
                     st.error("O Km Final deve ser maior que o Km Inicial.")
                 else:
-                    local_registrado = estabelecimento if ganho_fixo > 0 else "iFood / Apps"
+                    local_reg = estabelecimento if ganho_fixo > 0 else "iFood / Apps"
                     if ganho_app > 0 and ganho_fixo > 0:
-                        local_registrado = f"Apps + {estabelecimento}"
+                        local_reg = f"Apps + {estabelecimento}"
 
                     db["turnos"].append({
                         "data": str(data_turno),
-                        "moto_id": moto["id"],
-                        "moto_nome": moto["apelido"],
+                        "moto_id": moto_ativa["id"],
                         "km_ini": km_ini,
                         "km_fim": km_fim,
                         "km": dist,
                         "ganho_app": ganho_app,
-                        "estabelecimento": local_registrado,
+                        "estabelecimento": local_reg,
                         "ganho_estab": ganho_fixo,
                         "bruto": bruto_dia,
                         "extras": gastos_extras,
-                        "custo_km": round(custo_total_km, 4),
-                        "custo_reserva_km": round(custo_reserva_km, 4)
+                        "custo_km": round(custo_total_km, 4)
                     })
-                    if km_fim > moto["hodometro"]:
-                        moto["hodometro"] = km_fim
-                    save_data(db, user_key)
-                    st.success(f"Turno salvo na {moto['apelido']}! +{dist} km ({local_registrado}).")
+                    if km_fim > moto_ativa["hodometro"]:
+                        moto_ativa["hodometro"] = km_fim
+                    save_state(user_key, db)
+                    st.success(f"Turno salvo! +{dist} km ({local_reg}).")
                     st.rerun()
 
     if turnos_filtrados:
         st.subheader("Histórico de Turnos")
-        df_turnos = pd.DataFrame(turnos_filtrados)
-        df_turnos["Líquido (R$)"] = (df_turnos["bruto"] - (df_turnos["km"] * df_turnos["custo_km"]) - df_turnos["extras"]).round(2)
-        st.dataframe(
-            df_turnos[["data", "moto_nome", "estabelecimento", "km", "bruto", "Líquido (R$)"]].rename(
-                columns={"data": "Data", "moto_nome": "Moto", "estabelecimento": "Origem", "km": "Km", "bruto": "Bruto (R$)"}
-            ),
-            use_container_width=True,
-            hide_index=True
-        )
+        rows = []
+        for t in turnos_filtrados:
+            m_ref = motos_dict.get(t.get("moto_id"), moto_ativa)
+            _, _, c_km_ref = calc_custos_moto(m_ref)
+            liq = t["bruto"] - (t["km"] * c_km_ref) - t.get("extras", 0.0)
+            rows.append({
+                "Data": t["data"],
+                "Moto": m_ref["apelido"],
+                "Origem": t["estabelecimento"],
+                "Km": t["km"],
+                "Bruto (R$)": round(t["bruto"], 2),
+                "Líquido (R$)": round(liq, 2)
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         with st.expander("🗑️ Excluir um turno lançado errado"):
-            opcoes_excluir = [
-                f"{i} | {t['data']} [{t.get('moto_nome', 'Moto')}] — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})"
+            opcoes_ex = [
+                f"{i} | {t['data']} — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})"
                 for i, t in enumerate(db["turnos"])
             ]
-            selecionado = st.selectbox("Selecione o turno para remover:", options=opcoes_excluir)
-            if st.button("Confirmar Exclusão", type="primary"):
-                idx_remover = int(selecionado.split(" | ")[0])
-                removido = db["turnos"].pop(idx_remover)
-                m_alvo = motos_dict.get(removido.get("moto_id", "moto_1"))
-                if m_alvo:
-                    turnos_m = [t["km_fim"] for t in db["turnos"] if t.get("moto_id") == m_alvo["id"]]
-                    if turnos_m:
-                        m_alvo["hodometro"] = max(turnos_m)
-                save_data(db, user_key)
-                st.toast("Turno removido!")
+            sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
+            if st.button("Confirmar Exclusão do Turno", type="primary"):
+                idx_rem = int(sel_ex.split(" | ")[0])
+                db["turnos"].pop(idx_rem)
+                save_state(user_key, db)
                 st.rerun()
 
+# ==========================================
+# ABA 2: SIMULAR & ORÇAR
+# ==========================================
 with tab_sim:
-    st.subheader(f"Calculadora de Corrida e Orçamento ({moto['apelido']})")
-    modo_sim = st.radio(
-        "O que você deseja fazer agora?",
-        options=["⚡ Simular Corrida de App (Rápido)", "📍 Gerar Orçamento por Endereço (Cliente Particular)"],
-        horizontal=True
-    )
+    modo_sim = st.radio("Modo:", ["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"], horizontal=True)
 
-    st.divider()
-
-    if modo_sim == "⚡ Simular Corrida de App (Rápido)":
+    if modo_sim == "⚡ Simular Corrida de App":
         col_s1, col_s2 = st.columns(2)
-        valor_corrida = col_s1.number_input("Valor Ofertado pelo App (R$)", min_value=0.0, value=12.0, step=0.5)
-        dist_corrida = col_s2.number_input("Distância Total: Coleta + Entrega (km)", min_value=0.1, value=6.0, step=0.5)
+        val_corrida = col_s1.number_input("Valor Ofertado (R$)", min_value=0.0, value=12.0, step=0.5)
+        dist_corrida = col_s2.number_input("Distância Total até Entrega (km)", min_value=0.1, value=6.0, step=0.5)
 
-        custo_corrida = dist_corrida * custo_total_km
-        lucro_corrida = valor_corrida - custo_corrida
-        liquido_por_km = lucro_corrida / dist_corrida if dist_corrida > 0 else 0
+        custo_c = dist_corrida * custo_total_km
+        lucro_c = val_corrida - custo_c
+        liq_km = lucro_c / dist_corrida if dist_corrida > 0 else 0
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("Lucro Líquido Real", f"R$ {lucro_corrida:.2f}")
-        m2.metric("Custo da Moto", f"- R$ {custo_corrida:.2f}")
-        m3.metric("Líquido por Km", f"R$ {liquido_por_km:.2f}/km")
+        m1.metric("Lucro Líquido", f"R$ {lucro_c:.2f}")
+        m2.metric("Custo Moto", f"- R$ {custo_c:.2f}")
+        m3.metric("Líquido / Km", f"R$ {liq_km:.2f}/km")
 
-        if liquido_por_km >= 1.30:
+        if liq_km >= 1.30:
             st.success("✅ **CORRIDA BOA:** Acima da meta de rentabilidade líquida!")
-        elif liquido_por_km >= 0.80:
-            st.warning("⚠️ **EMPATE / ATENÇÃO:** Margem apertada, avalie o trânsito e o retorno.")
+        elif liq_km >= 0.80:
+            st.warning("⚠️ **EMPATE / ATENÇÃO:** Margem apertada, avalie o trânsito.")
         else:
-            st.error("🚨 **PREJUÍZO / FURADA:** Você está desgastando a moto abaixo do mínimo viável.")
+            st.error("🚨 **FURADA / PREJUÍZO:** Abaixo do mínimo viável.")
 
     else:
-        st.markdown("#### 1. Ponto de Partida (Deslocamento até a Retirada)")
+        st.subheader("Cálculo de Rota e Orçamento")
         modo_partida = st.radio(
-            "Como deseja informar onde você está agora?",
-            options=[
-                "📍 Já estou na retirada / Não cobrar deslocamento",
-                "📡 Meu GPS Atual (Navegador)",
-                "🏍️ Digitar Rua/Ponto onde estou agora"
-            ],
-            horizontal=False
+            "Deslocamento até a retirada:",
+            ["📍 Estou no local / Não cobrar deslocamento", "📡 Meu GPS Atual (HTTPS)", "🏍️ Digitar Rua onde estou"],
+            horizontal=True
         )
 
-        coord_atual = None
-        if modo_partida == "📡 Meu GPS Atual (Navegador)":
+        coord_partida = None
+        if modo_partida == "📡 Meu GPS Atual (HTTPS)":
             if HAS_GEO:
-                loc = get_geolocation(component_key="gps_entregador")
+                loc = get_geolocation()
                 if loc and "coords" in loc:
-                    coord_atual = {
-                        "lat": loc["coords"]["latitude"],
-                        "lon": loc["coords"]["longitude"],
-                        "label": "Minha Localização Atual (GPS)"
-                    }
-                    st.success(f"📡 GPS capturado ({coord_atual['lat']:.5f}, {coord_atual['lon']:.5f})")
+                    coord_partida = (loc["coords"]["latitude"], loc["coords"]["longitude"])
+                    st.success(f"GPS capturado: {coord_partida[0]:.5f}, {coord_partida[1]:.5f}")
                 else:
-                    st.info("Aguardando permissão de localização do navegador...")
+                    st.info("Aguardando permissão de localização no navegador...")
             else:
-                st.warning("Pacote `streamlit-js-eval` não instalado.")
-        elif modo_partida == "🏍️ Digitar Rua/Ponto onde estou agora":
+                st.warning("Pacote streamlit-js-eval não instalado.")
+        elif modo_partida == "🏍️ Digitar Rua onde estou":
             if HAS_SEARCHBOX:
-                coord_atual = st_searchbox(
-                    buscar_enderecos_online,
-                    key="sb_partida",
-                    placeholder="Ex: Av. Loreto, Araras ou Praça Central..."
-                )
-            else:
-                txt_p = st.text_input("Rua/Local onde estou agora:", key="txt_p")
-                if txt_p:
-                    res_p = buscar_enderecos_online(txt_p)
-                    if res_p:
-                        coord_atual = res_p[0][1]
+                res_part = st_searchbox(buscar_enderecos_online, placeholder="Ex: Av. Loreto, Araras", key="sb_part")
+                if res_part:
+                    coord_partida = res_part
 
-        st.markdown("#### 2. Endereços da Entrega")
-        col_o1, col_o2 = st.columns([3, 1])
-        with col_o1:
-            st.caption("Endereço de Retirada / Coleta:")
+        col_e1, col_e2 = st.columns([3, 1])
+        coord_retirada, label_retirada = None, ""
+        with col_e1:
             if HAS_SEARCHBOX:
-                sel_origem = st_searchbox(buscar_enderecos_online, key="sb_origem", placeholder="Rua, número e cidade da retirada...")
+                res_ret = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Retirada (Rua, Cidade)", key="sb_ret")
+                if res_ret:
+                    coord_retirada = res_ret
+                    label_retirada = "Endereço de Retirada"
             else:
-                txt_o = st.text_input("Retirada:", key="txt_o")
-                sel_origem = buscar_enderecos_online(txt_o)[0][1] if (txt_o and buscar_enderecos_online(txt_o)) else None
-        with col_o2:
-            num_origem = st.text_input("Nº / Compl.", key="num_o", placeholder="Ex: 120")
+                label_retirada = st.text_input("Endereço de Retirada")
+        num_ret = col_e2.text_input("Nº / Compl. (Ret.)", key="num_ret")
 
-        col_d1, col_d2 = st.columns([3, 1])
-        with col_d1:
-            st.caption("Endereço de Entrega / Destino:")
+        col_e3, col_e4 = st.columns([3, 1])
+        coord_entrega, label_entrega = None, ""
+        with col_e3:
             if HAS_SEARCHBOX:
-                sel_destino = st_searchbox(buscar_enderecos_online, key="sb_destino", placeholder="Rua, número e cidade da entrega...")
+                res_ent = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Entrega (Rua, Cidade)", key="sb_ent")
+                if res_ent:
+                    coord_entrega = res_ent
+                    label_entrega = "Endereço de Entrega"
             else:
-                txt_d = st.text_input("Entrega:", key="txt_d")
-                sel_destino = buscar_enderecos_online(txt_d)[0][1] if (txt_d and buscar_enderecos_online(txt_d)) else None
-        with col_d2:
-            num_destino = st.text_input("Nº / Compl.", key="num_d", placeholder="Ex: 1285")
+                label_entrega = st.text_input("Endereço de Entrega")
+        num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
 
-        dist_desloc_km = 0.0
-        dist_entrega_km = 6.0
-        tempo_min = 15
+        km_desloc = 0.0
+        km_entrega_auto = 6.0
+        if coord_retirada and coord_entrega:
+            d_ent, t_ent = calcular_rota_osrm(coord_retirada, coord_entrega)
+            if d_ent:
+                km_entrega_auto = d_ent
+                st.caption(f"Rota Retirada ➔ Entrega: **{d_ent} km** (~{t_ent} min)")
+            if coord_partida:
+                d_desl, _ = calcular_rota_osrm(coord_partida, coord_retirada)
+                if d_desl:
+                    km_desloc = d_desl
+                    st.caption(f"Deslocamento até Retirada: **{d_desl} km**")
 
-        if sel_origem and sel_destino:
-            d_ent, t_ent = calcular_rota_osrm(sel_origem["lat"], sel_origem["lon"], sel_destino["lat"], sel_destino["lon"])
-            if d_ent is not None:
-                dist_entrega_km = d_ent
-                tempo_min = t_ent
+        col_o1, col_o2, col_o3 = st.columns(3)
+        km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5)
+        valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=2.0, step=0.25)
+        taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=8.0, step=1.0)
 
-            if coord_atual:
-                d_desl, t_desl = calcular_rota_osrm(coord_atual["lat"], coord_atual["lon"], sel_origem["lat"], sel_origem["lon"])
-                if d_desl is not None:
-                    dist_desloc_km = d_desl
-                    tempo_min += t_desl
+        cobrar_desloc = st.checkbox("Incluir km de deslocamento até retirada no preço ao cliente", value=False)
+        km_cobrado = km_entrega + (km_desloc if cobrar_desloc else 0.0)
+        km_rodado_real = km_entrega + km_desloc
 
-            resumo_rota = f"📍 **Entrega:** {dist_entrega_km:.2f} km (~{tempo_min} min)"
-            if dist_desloc_km > 0:
-                resumo_rota += f" | 🏍️ **Deslocamento até coleta:** +{dist_desloc_km:.2f} km (**Total:** {dist_desloc_km + dist_entrega_km:.2f} km)"
-            st.success(resumo_rota)
+        preco_cliente = max(taxa_minima, round(km_cobrado * valor_km_cobrar, 2))
+        custo_operacional_orc = km_rodado_real * custo_total_km
+        lucro_orc = preco_cliente - custo_operacional_orc
 
-        st.markdown("#### 3. Precificação do Orçamento")
-        col_p1, col_p2, col_p3 = st.columns(3)
-        dist_entrega_manual = col_p1.number_input("Km da Entrega:", min_value=0.1, value=float(dist_entrega_km), step=0.5)
-        valor_km_cobrar = col_p2.number_input("Cobrar por Km (R$):", min_value=0.5, value=2.00, step=0.25, format="%.2f")
-        taxa_minima = col_p3.number_input("Taxa Mínima (R$):", min_value=0.0, value=8.00, step=1.0, format="%.2f")
+        oc1, oc2, oc3 = st.columns(3)
+        oc1.metric("Valor ao Cliente", f"R$ {preco_cliente:.2f}")
+        oc2.metric("Seu Custo Moto", f"- R$ {custo_operacional_orc:.2f}")
+        oc3.metric("Seu Lucro Líquido", f"R$ {lucro_orc:.2f}")
 
-        col_chk1, col_chk2 = st.columns(2)
-        cobrar_desloc = col_chk1.checkbox(f"Cobrar deslocamento até coleta (+{dist_desloc_km:.1f} km)", value=True, disabled=(dist_desloc_km == 0))
-        considerar_volta = col_chk2.checkbox("Calcular custo de retorno vazio (volta)", value=False)
-
-        km_cobrado_cliente = dist_entrega_manual + (dist_desloc_km if cobrar_desloc else 0.0)
-        valor_orcamento = max(km_cobrado_cliente * valor_km_cobrar, taxa_minima)
-
-        km_real_moto = (dist_desloc_km + dist_entrega_manual) * (2 if considerar_volta else 1)
-        custo_operacional_orc = km_real_moto * custo_total_km
-        lucro_orcamento = valor_orcamento - custo_operacional_orc
-
-        st.divider()
-        r1, r2, r3 = st.columns(3)
-        r1.metric("Valor para o Cliente", f"R$ {valor_orcamento:.2f}")
-        r2.metric("Seu Custo Real Moto", f"- R$ {custo_operacional_orc:.2f}")
-        r3.metric("Seu Lucro Líquido", f"R$ {lucro_orcamento:.2f}")
-
-        origem_txt = f"{sel_origem['label']} (Nº {num_origem})" if (sel_origem and num_origem) else (sel_origem["label"] if sel_origem else "A definir")
-        destino_txt = f"{sel_destino['label']} (Nº {num_destino})" if (sel_destino and num_destino) else (sel_destino["label"] if sel_destino else "A definir")
-
-        msg_whats = "\n".join([
+        txt_ret = f"{label_retirada} {num_ret}".strip() or "Ponto de Coleta"
+        txt_ent = f"{label_entrega} {num_ent}".strip() or "Destino"
+        msg_whats = "
+".join([
             "🏍️ *ORÇAMENTO DE ENTREGA*",
-            f"📍 *Retirada:* {origem_txt}",
-            f"🏁 *Entrega:* {destino_txt}",
-            f"📏 *Distância considerada:* {km_cobrado_cliente:.1f} km",
-            f"💰 *Valor da Corrida:* R$ {valor_orcamento:.2f}",
-            "",
-            "Posso confirmar a coleta?"
+            f"📍 *Retirada:* {txt_ret}",
+            f"🏁 *Entrega:* {txt_ent}",
+            f"📏 *Distância:* {km_cobrado:.1f} km",
+            f"💰 *Valor Total:* R$ {preco_cliente:.2f}"
         ])
-        st.text_area("📲 Copie e envie no WhatsApp do Cliente:", value=msg_whats, height=165)
+        st.text_area("Mensagem pronta para copiar e enviar no WhatsApp:", value=msg_whats, height=135)
 
+# ==========================================
+# ABA 3: GARAGEM, ABASTECIMENTOS & MANUTENÇÕES
+# ==========================================
 with tab_garagem:
-    st.subheader(f"💰 Balanço da Caixinha: Previsto vs. Gasto Real ({moto['apelido']})")
+    sub_pecas, sub_manut, sub_abast, sub_config = st.tabs([
+        "🔧 Saúde das Peças",
+        "🛠️ Manutenções (Previsto x Real)",
+        "⛽ Abastecimentos (Gasolina)",
+        "⚙️ Config. & Nova Moto"
+    ])
 
-    turnos_moto = [t for t in db["turnos"] if t.get("moto_id", "moto_1") == moto["id"]]
-    manuts_moto = [m for m in db.get("manutencoes", []) if m.get("moto_id", "moto_1") == moto["id"]]
+    # --- SUB-ABA 3.1: SAÚDE DAS PEÇAS ---
+    with sub_pecas:
+        st.subheader(f"Desgaste Preventivo — {moto_ativa['apelido']}")
+        for idx, p in enumerate(moto_ativa.get("pecas", [])):
+            rodados = int(moto_ativa["hodometro"]) - int(p["ultima_km"])
+            restantes = int(p["intervalo"]) - rodados
+            pct = min(max(rodados / max(int(p["intervalo"]), 1), 0.0), 1.0)
+            status_icon = "🟢 OK" if restantes > p["intervalo"] * 0.15 else ("🟡 ATENÇÃO" if restantes > 0 else "🔴 VENCIDO")
 
-    reserva_acumulada_app = sum(t["km"] * t.get("custo_reserva_km", custo_reserva_km) for t in turnos_moto)
-    total_gasto_manut_real = sum(m["valor_total"] for m in manuts_moto)
-
-    b1, b2, b3 = st.columns(3)
-    b1.metric("Reservado nos Turnos (App)", f"R$ {reserva_acumulada_app:.2f}", help="Valor separado automaticamente pelos km rodados registrados no app")
-    b2.metric("Total Gasto em Oficina (Histórico)", f"R$ {total_gasto_manut_real:.2f}", help="Soma de todas as manutenções registradas abaixo")
-    b3.metric("Custo Real Peças + Fixos", f"R$ {custo_reserva_km:.3f}/km", help="Quanto você deve guardar por km rodado")
-
-    st.divider()
-
-    st.subheader("🛠️ Registrar Manutenção / Serviço Realizado")
-    with st.expander("➕ Lançar Nova Manutenção Feita na Oficina", expanded=False):
-        with st.form("form_nova_manutencao"):
-            hm1, hm2, hm3 = st.columns([1.1, 1, 1.4])
-            data_manut = hm1.date_input("Data do Serviço", value=date.today())
-            odo_manut = hm2.number_input("Hodômetro (km)", value=int(moto["hodometro"]), step=1)
-            opcoes_comp = [p["nome"] for p in moto["pecas"]] + ["Outro Serviço / Peça Avulsa"]
-            comp_escolhido = hm3.selectbox("Componente / Serviço", options=opcoes_comp)
-
-            hm4, hm5, hm6 = st.columns([1.2, 1, 1])
-            oficina_nome = hm4.text_input("Oficina / Loja", placeholder="Ex: Amaral, Mineiro, Poty...")
-            val_peca = hm5.number_input("Valor Peça (R$)", min_value=0.0, step=5.0)
-            val_total_pago = hm6.number_input("Valor Total Pago (R$)", min_value=0.0, step=5.0)
-
-            hm7, hm8 = st.columns([2, 1])
-            obs_manut = hm7.text_input("Observações", placeholder="Ex: Troca preventiva, marca da peça...")
-            atualizar_param = hm8.checkbox("Atualizar barra de desgaste e custo/km", value=True)
-
-            if st.form_submit_button("Salvar Manutenção no Histórico", use_container_width=True):
-                novo_reg = {
-                    "id": f"m_{len(db.get('manutencoes', [])) + 1}_{odo_manut}",
-                    "moto_id": moto["id"],
-                    "data": str(data_manut),
-                    "hodometro": int(odo_manut),
-                    "componente": comp_escolhido,
-                    "oficina": oficina_nome if oficina_nome.strip() else "Não informada",
-                    "valor_peca": float(val_peca),
-                    "valor_total": float(val_total_pago),
-                    "obs": obs_manut
-                }
-                db.setdefault("manutencoes", []).append(novo_reg)
-
-                if atualizar_param:
-                    for p in moto["pecas"]:
-                        if p["nome"] == comp_escolhido:
-                            if odo_manut >= p["ultima_km"]:
-                                p["ultima_km"] = int(odo_manut)
-                            if val_total_pago > 0:
-                                p["custo"] = float(val_total_pago)
-                    if odo_manut > moto["hodometro"]:
-                        moto["hodometro"] = int(odo_manut)
-
-                save_data(db, user_key)
-                st.success(f"Serviço '{comp_escolhido}' registrado com sucesso!")
+            cp1, cp2 = st.columns([3.5, 1.2])
+            cp1.markdown(f"**{p['nome']}** — {status_icon} (`{restantes:,} km restantes` | Base: R$ {p['custo']:.0f})")
+            cp1.progress(pct)
+            if cp2.button("Troquei Hoje", key=f"troca_{moto_ativa['id']}_{idx}", use_container_width=True):
+                p["ultima_km"] = int(moto_ativa["hodometro"])
+                db["manutencoes"].append({
+                    "data": str(date.today()),
+                    "moto_id": moto_ativa["id"],
+                    "hodometro": int(moto_ativa["hodometro"]),
+                    "componente": p["nome"],
+                    "oficina": "Troca Rápida",
+                    "valor_peca": float(p["custo"]),
+                    "valor_total": float(p["custo"]),
+                    "obs": "Registrado pelo botão Troquei Hoje"
+                })
+                save_state(user_key, db)
+                st.toast(f"{p['nome']} zerado em {moto_ativa['hodometro']} km!")
                 st.rerun()
 
-    if manuts_moto:
-        with st.expander(f"📋 Ver Histórico Completo de Serviços ({len(manuts_moto)} registros — Total: R$ {total_gasto_manut_real:.2f})", expanded=True):
-            df_manut = pd.DataFrame(manuts_moto)
+    # --- SUB-ABA 3.2: MANUTENÇÕES (DAQUI PRA FRENTE) ---
+    with sub_manut:
+        st.subheader("Balanço Caixinha: Previsto vs. Gasto Real")
+        st.caption(f"Considerando apenas turnos e manutenções a partir de **{DATA_INICIO_CICLO}** (histórico anterior mantido apenas para alertas de km).")
+
+        turnos_ciclo = [
+            t for t in db["turnos"]
+            if t.get("moto_id") == moto_ativa["id"] and t["data"] >= DATA_INICIO_CICLO
+        ]
+        km_ciclo = sum(t["km"] for t in turnos_ciclo)
+        reservado_manut_ciclo = km_ciclo * custo_reserva_km
+
+        manut_moto = [m for m in db.get("manutencoes", []) if m.get("moto_id") == moto_ativa["id"]]
+        manut_ciclo = [m for m in manut_moto if m["data"] >= DATA_INICIO_CICLO]
+        gasto_real_ciclo = sum(float(m["valor_total"]) for m in manut_ciclo)
+        saldo_caixinha_manut = reservado_manut_ciclo - gasto_real_ciclo
+
+        bm1, bm2, bm3 = st.columns(3)
+        bm1.metric("Reservado na Caixinha", f"R$ {reservado_manut_ciclo:.2f}")
+        bm2.metric("Gasto Real (Pós-22/11)", f"R$ {gasto_real_ciclo:.2f}")
+        bm3.metric("Saldo da Reserva", f"R$ {saldo_caixinha_manut:+.2f}")
+
+        with st.expander("➕ Registrar Nova Manutenção / Serviço Feito", expanded=True):
+            nomes_pecas = [p["nome"] for p in moto_ativa.get("pecas", [])] + ["Outro Serviço / Peça Avulsa"]
+            with st.form("form_nova_manut"):
+                fm1, fm2, fm3 = st.columns(3)
+                data_m = fm1.date_input("Data do Serviço", value=date.today())
+                odo_m = fm2.number_input("Hodômetro (km)", value=int(moto_ativa["hodometro"]), step=1)
+                comp_m = fm3.selectbox("Componente / Serviço", options=nomes_pecas)
+
+                fm4, fm5, fm6 = st.columns(3)
+                oficina_m = fm4.text_input("Oficina / Loja", placeholder="Ex: Amaral")
+                val_peca_m = fm5.number_input("Valor Peça (R$)", min_value=0.0, step=5.0)
+                val_total_m = fm6.number_input("Valor Total Pago (R$)", min_value=0.0, step=5.0)
+
+                obs_m = st.text_input("Observações (opcional)")
+                atualizar_peca = st.checkbox("Atualizar hodômetro de troca e custo base desta peça na Garagem", value=True)
+
+                if st.form_submit_button("Salvar Manutenção", use_container_width=True):
+                    db["manutencoes"].append({
+                        "data": str(data_m),
+                        "moto_id": moto_ativa["id"],
+                        "hodometro": int(odo_m),
+                        "componente": comp_m,
+                        "oficina": oficina_m or "Não informada",
+                        "valor_peca": float(val_peca_m),
+                        "valor_total": float(val_total_m),
+                        "obs": obs_m
+                    })
+                    if atualizar_peca:
+                        for p in moto_ativa.get("pecas", []):
+                            if p["nome"] == comp_m:
+                                p["ultima_km"] = int(odo_m)
+                                if val_total_m > 0:
+                                    p["custo"] = float(val_total_m)
+                    if int(odo_m) > int(moto_ativa["hodometro"]):
+                        moto_ativa["hodometro"] = int(odo_m)
+                    save_state(user_key, db)
+                    st.success("Manutenção registrada com sucesso!")
+                    st.rerun()
+
+        if manut_moto:
+            st.markdown("#### Histórico Completo de Serviços")
+            df_m = pd.DataFrame(manut_moto).sort_values(by="data", ascending=False)
+            df_m["Período"] = df_m["data"].apply(lambda d: "Ciclo Atual" if d >= DATA_INICIO_CICLO else "Pré-Ciclo (Ref.)")
             st.dataframe(
-                df_manut[["data", "hodometro", "componente", "oficina", "valor_peca", "valor_total", "obs"]].rename(
-                    columns={
-                        "data": "Data",
-                        "hodometro": "Hodômetro",
-                        "componente": "Componente / Serviço",
-                        "oficina": "Oficina / Loja",
-                        "valor_peca": "Peça (R$)",
-                        "valor_total": "Total Pago (R$)",
-                        "obs": "Observações"
-                    }
+                df_m[["data", "Período", "hodometro", "componente", "oficina", "valor_total", "obs"]].rename(
+                    columns={"data": "Data", "hodometro": "Km", "componente": "Serviço", "oficina": "Oficina", "valor_total": "Pago (R$)", "obs": "Obs."}
                 ),
                 use_container_width=True,
                 hide_index=True
             )
 
-            opcoes_del_m = [
-                f"{i} | {m['data']} — {m['componente']} ({m['hodometro']} km | R$ {m['valor_total']:.2f})"
-                for i, m in enumerate(db["manutencoes"])
-                if m.get("moto_id", "moto_1") == moto["id"]
-            ]
-            if opcoes_del_m:
-                col_dm1, col_dm2 = st.columns([3, 1])
-                sel_del_m = col_dm1.selectbox("Remover lançamento incorreto:", options=opcoes_del_m, label_visibility="collapsed")
-                if col_dm2.button("Excluir Serviço"):
-                    idx_m_del = int(sel_del_m.split(" | ")[0])
-                    db["manutencoes"].pop(idx_m_del)
-                    save_data(db, user_key)
-                    st.toast("Registro de manutenção excluído!")
+    # --- SUB-ABA 3.3: ABASTECIMENTOS (GASOLINA PREVISTA X REAL) ---
+    with sub_abast:
+        st.subheader("Controle de Combustível: Previsto vs. Bomba")
+        turnos_ciclo_gas = [
+            t for t in db["turnos"]
+            if t.get("moto_id") == moto_ativa["id"] and t["data"] >= DATA_INICIO_CICLO
+        ]
+        km_ciclo_gas = sum(t["km"] for t in turnos_ciclo_gas)
+        gas_prevista_ciclo = km_ciclo_gas * custo_gas_km
+
+        abast_moto = [
+            a for a in db.get("abastecimentos", [])
+            if a.get("moto_id") == moto_ativa["id"] and a["data"] >= DATA_INICIO_CICLO
+        ]
+        gas_real_bomba = sum(float(a["valor_pago"]) for a in abast_moto)
+        litros_totais = sum(float(a["litros"]) for a in abast_moto)
+        saldo_gas = gas_prevista_ciclo - gas_real_bomba
+
+        ga1, ga2, ga3 = st.columns(3)
+        ga1.metric("Reservado Gasolina", f"R$ {gas_prevista_ciclo:.2f}")
+        ga2.metric("Pago na Bomba", f"R$ {gas_real_bomba:.2f}")
+        ga3.metric("Diferença (Previsto - Real)", f"R$ {saldo_gas:+.2f}")
+
+        if litros_totais > 0 and km_ciclo_gas > 0:
+            consumo_real = km_ciclo_gas / litros_totais
+            st.caption(f"Consumo médio estimado no ciclo: **{consumo_real:.1f} km/L** (Parâmetro configurado: {moto_ativa['consumo_kml']} km/L)")
+
+        with st.expander("⛽ Registrar Novo Abastecimento", expanded=True):
+            with st.form("form_abastecimento"):
+                fa1, fa2, fa3, fa4 = st.columns(4)
+                data_a = fa1.date_input("Data", value=date.today())
+                odo_a = fa2.number_input("Hodômetro (km)", value=int(moto_ativa["hodometro"]), step=1)
+                litros_a = fa3.number_input("Litros", min_value=0.1, value=10.0, step=0.5, format="%.2f")
+                valor_a = fa4.number_input("Valor Pago (R$)", min_value=1.0, value=59.90, step=1.0, format="%.2f")
+                posto_a = st.text_input("Posto / Observação (opcional)")
+
+                if st.form_submit_button("Salvar Abastecimento", use_container_width=True):
+                    preco_l_calc = round(valor_a / litros_a, 2)
+                    db["abastecimentos"].append({
+                        "data": str(data_a),
+                        "moto_id": moto_ativa["id"],
+                        "hodometro": int(odo_a),
+                        "litros": float(litros_a),
+                        "valor_pago": float(valor_a),
+                        "preco_litro": preco_l_calc,
+                        "posto": posto_a
+                    })
+                    if int(odo_a) > int(moto_ativa["hodometro"]):
+                        moto_ativa["hodometro"] = int(odo_a)
+                    save_state(user_key, db)
+                    st.success(f"Abastecimento registrado! (R$ {preco_l_calc:.2f}/L)")
                     st.rerun()
 
-    st.divider()
+        if abast_moto:
+            df_a = pd.DataFrame(abast_moto).sort_values(by="data", ascending=False)
+            st.dataframe(
+                df_a[["data", "hodometro", "litros", "preco_litro", "valor_pago", "posto"]].rename(
+                    columns={"data": "Data", "hodometro": "Km", "litros": "Litros", "preco_litro": "R$/L", "valor_pago": "Total (R$)", "posto": "Posto"}
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
 
-    st.subheader(f"🚦 Alertas de Desgaste Preventivo ({moto['apelido']})")
-    for idx, p in enumerate(moto["pecas"]):
-        rodados = moto["hodometro"] - p["ultima_km"]
-        restantes = p["intervalo"] - rodados
-        pct = min(max(rodados / p["intervalo"], 0.0), 1.0)
-        status_icon = "🟢 OK" if restantes > p["intervalo"] * 0.15 else ("🟡 ATENÇÃO" if restantes > 0 else "🔴 VENCIDO")
-        col_p1, col_p2 = st.columns([3, 1])
-        col_p1.markdown(f"**{p['nome']}** — {status_icon} (`{restantes:,} km restantes` | Base: R$ {p['custo']:.0f})")
-        col_p1.progress(pct)
-        if col_p2.button("Troquei Hoje", key=f"troca_{moto['id']}_{idx}", use_container_width=True):
-            moto["pecas"][idx]["ultima_km"] = moto["hodometro"]
-            save_data(db, user_key)
-            st.toast(f"{p['nome']} zerado em {moto['hodometro']} km!")
-            st.rerun()
-
-    st.divider()
-
-    st.subheader("⚙️ Parâmetros de Combustível, Fixos e Multi-Moto")
-    with st.expander("Editar Gasolina, Consumo, Hodômetro e Custos Fixos"):
-        with st.form("form_config_moto"):
-            cg0_1, cg0_2 = st.columns(2)
-            novo_apelido = cg0_1.text_input("Apelido da Moto", value=moto["apelido"])
-            novo_odo = cg0_2.number_input("Hodômetro Atual (km)", value=int(moto["hodometro"]), step=1)
-
+    # --- SUB-ABA 3.4: CONFIGURAÇÕES & NOVA MOTO ---
+    with sub_config:
+        st.subheader(f"Parâmetros — {moto_ativa['apelido']}")
+        with st.form("form_cfg_moto"):
             cg1, cg2, cg3 = st.columns(3)
-            novo_preco_gas = cg1.number_input("Gasolina (R$/L)", value=float(moto["preco_gasolina"]), step=0.05, format="%.2f")
-            novo_consumo = cg2.number_input("Consumo (km/L)", value=float(moto["consumo_kml"]), step=0.5, format="%.1f")
-            novo_seguro = cg3.number_input("Seguro Anual (R$)", value=float(moto["seguro_anual"]), step=10.0, format="%.2f")
+            novo_apelido = cg1.text_input("Apelido da Moto", value=moto_ativa["apelido"])
+            novo_odo = cg2.number_input("Hodômetro Atual (km)", value=int(moto_ativa["hodometro"]), step=1)
+            novo_gas = cg3.number_input("Gasolina Base (R$/L)", value=float(moto_ativa["preco_gasolina"]), step=0.05, format="%.2f")
 
-            cg4, cg5 = st.columns(2)
-            novo_licenc = cg4.number_input("IPVA/Licenc. (R$)", value=float(moto["licenciamento_anual"]), step=5.0, format="%.2f")
-            nova_proj = cg5.number_input("Projeção Anual (km)", value=float(moto["projecao_anual_km"]), step=500.0, format="%.0f")
+            cg4, cg5, cg6 = st.columns(3)
+            novo_kml = cg4.number_input("Consumo Base (km/L)", value=float(moto_ativa["consumo_kml"]), step=0.5, format="%.1f")
+            novo_seg = cg5.number_input("Seguro Anual (R$)", value=float(moto_ativa["seguro_anual"]), step=10.0, format="%.2f")
+            novo_lic = cg6.number_input("IPVA/Licenc. (R$)", value=float(moto_ativa["licenciamento_anual"]), step=5.0, format="%.2f")
 
-            if st.form_submit_button("Salvar Parâmetros", use_container_width=True):
-                moto["apelido"] = novo_apelido.strip() or moto["apelido"]
-                moto["hodometro"] = novo_odo
-                moto["preco_gasolina"] = novo_preco_gas
-                moto["consumo_kml"] = novo_consumo
-                moto["seguro_anual"] = novo_seguro
-                moto["licenciamento_anual"] = novo_licenc
-                moto["projecao_anual_km"] = nova_proj
-                save_data(db, user_key)
-                st.success("Parâmetros atualizados!")
+            if st.form_submit_button("Salvar Configurações da Moto", use_container_width=True):
+                moto_ativa["apelido"] = novo_apelido
+                moto_ativa["hodometro"] = int(novo_odo)
+                moto_ativa["preco_gasolina"] = float(novo_gas)
+                moto_ativa["consumo_kml"] = float(novo_kml)
+                moto_ativa["seguro_anual"] = float(novo_seg)
+                moto_ativa["licenciamento_anual"] = float(novo_lic)
+                save_state(user_key, db)
+                st.success("Configurações atualizadas!")
                 st.rerun()
 
-    with st.expander("✏️ Editar Custo Base ou Intervalo das Peças"):
-        peca_nomes = [p["nome"] for p in moto["pecas"]]
-        peca_esc = st.selectbox("Escolha o componente:", options=peca_nomes)
-        idx_p = peca_nomes.index(peca_esc)
-        p_atual = moto["pecas"][idx_p]
+        st.divider()
+        st.subheader("➕ Cadastrar Outra Moto (Multi-Moto)")
+        with st.form("form_add_moto"):
+            am1, am2, am3 = st.columns([1.2, 1.5, 1])
+            apelido_nova = am1.text_input("Apelido (ex: CG Reserva)")
+            modelo_cat = am2.selectbox("Modelo Pré-Calibrado", options=list(CATALOGO_MOTOS.keys()))
+            odo_nova = am3.number_input("Hodômetro Atual", min_value=0, value=0, step=100)
 
-        with st.form("form_editar_peca"):
-            ep1, ep2, ep3 = st.columns(3)
-            novo_custo_p = ep1.number_input("Custo Base (R$)", value=float(p_atual["custo"]), step=5.0)
-            novo_interv_p = ep2.number_input("Intervalo (km)", value=int(p_atual["intervalo"]), step=500)
-            nova_ult_km = ep3.number_input("Km Última Troca", value=int(p_atual["ultima_km"]), step=100)
+            if st.form_submit_button("Cadastrar e Ativar Nova Moto", use_container_width=True):
+                if not apelido_nova.strip():
+                    st.error("Informe um apelido para a moto.")
+                else:
+                    novo_id = f"moto_{len(db['motos']) + 1}_{int(date.today().strftime('%d%H%M'))}"
+                    tpl = CATALOGO_MOTOS[modelo_cat]
+                    pecas_novas = []
+                    for p in tpl["pecas"]:
+                        p_copy = dict(p)
+                        p_copy["ultima_km"] = int(odo_nova)
+                        pecas_novas.append(p_copy)
 
-            if st.form_submit_button("Atualizar Peça", use_container_width=True):
-                moto["pecas"][idx_p]["custo"] = novo_custo_p
-                moto["pecas"][idx_p]["intervalo"] = novo_interv_p
-                moto["pecas"][idx_p]["ultima_km"] = nova_ult_km
-                save_data(db, user_key)
-                st.success(f"{peca_esc} atualizado!")
-                st.rerun()
+                    db["motos"].append({
+                        "id": novo_id,
+                        "apelido": apelido_nova.strip(),
+                        "modelo": modelo_cat,
+                        "hodometro": int(odo_nova),
+                        "preco_gasolina": tpl["preco_gasolina"],
+                        "consumo_kml": tpl["consumo_kml"],
+                        "seguro_anual": tpl["seguro_anual"],
+                        "licenciamento_anual": tpl["licenciamento_anual"],
+                        "projecao_anual_km": tpl["projecao_anual_km"],
+                        "pecas": pecas_novas
+                    })
+                    db["moto_ativa_id"] = novo_id
+                    save_state(user_key, db)
+                    st.success(f"Moto '{apelido_nova}' cadastrada e ativada!")
+                    st.rerun()
 
-    with st.expander("➕ Adicionar Segunda Moto (Reserva, Alugada ou Outro Modelo)"):
-        with st.form("form_nova_moto"):
-            nm1, nm2 = st.columns(2)
-            apelido_nova = nm1.text_input("Apelido (ex: CG 160 Reserva)", placeholder="Minha Segunda Moto")
-            modelo_cat = nm2.selectbox("Modelo Pré-Calibrado:", options=list(CATALOGO_MOTOS.keys()))
-
-            nm3, nm4 = st.columns(2)
-            odo_nova = nm3.number_input("Hodômetro Atual (km):", min_value=0, value=10000, step=100)
-            gas_nova = nm4.number_input("Preço Gasolina (R$/L):", min_value=1.0, value=5.99, step=0.05)
-
-            if st.form_submit_button("Cadastrar e Ativar Moto", use_container_width=True):
-                base = CATALOGO_MOTOS[modelo_cat]
-                novo_id = f"moto_{len(db['motos']) + 1}_{int(odo_nova)}"
-                pecas_novas = [
-                    {"nome": p["nome"], "intervalo": p["intervalo"], "ultima_km": int(odo_nova), "custo": p["custo"]}
-                    for p in base["pecas"]
-                ]
-                db["motos"].append({
-                    "id": novo_id,
-                    "apelido": apelido_nova.strip() if apelido_nova.strip() else modelo_cat.split("(")[0].strip(),
-                    "modelo": modelo_cat,
-                    "hodometro": int(odo_nova),
-                    "preco_gasolina": float(gas_nova),
-                    "consumo_kml": base["consumo_kml"],
-                    "seguro_anual": base["seguro_anual"],
-                    "licenciamento_anual": base["licenciamento_anual"],
-                    "projecao_anual_km": base["projecao_anual_km"],
-                    "pecas": pecas_novas
-                })
-                db["moto_ativa_id"] = novo_id
-                save_data(db, user_key)
-                st.success("Nova moto cadastrada!")
-                st.rerun()
-
+# ==========================================
+# ABA 4: TERMÔMETRO CLT
+# ==========================================
 with tab_clt:
-    st.subheader("Comparativo Real vs. CLT (+30% Periculosidade)")
+    st.subheader("Comparativo Real vs. Piso CLT (+30% Periculosidade)")
     dias_unicos = len(set(t["data"] for t in db["turnos"]))
-    total_km_clt = sum(t["km"] for t in db["turnos"])
-    bruto_clt = sum(t["bruto"] for t in db["turnos"])
+    km_total_clt = sum(t["km"] for t in db["turnos"])
+    bruto_total_clt = sum(t["bruto"] for t in db["turnos"])
 
-    custo_op_clt = 0.0
+    custo_total_periodo = 0.0
     for t in db["turnos"]:
-        m_ref = motos_dict.get(t.get("moto_id", "moto_1"), moto)
-        _, _, _, _, ct = calc_custos_moto(m_ref)
-        custo_op_clt += t["km"] * t.get("custo_km", ct)
+        m_ref = motos_dict.get(t.get("moto_id"), moto_ativa)
+        _, _, c_km_ref = calc_custos_moto(m_ref)
+        custo_total_periodo += (t["km"] * c_km_ref) + t.get("extras", 0.0)
 
-    liquido_clt = bruto_clt - custo_op_clt - sum(t["extras"] for t in db["turnos"])
+    liquido_total_clt = bruto_total_clt - custo_total_periodo
     meta_proporcional = dias_unicos * META_CLT_DIARIA
-    empate_bruto = meta_proporcional + custo_op_clt
-    indice_clt = (liquido_clt / meta_proporcional * 100) if meta_proporcional > 0 else 0
+    empate_bruto = meta_proporcional + custo_total_periodo
+    indice_clt = (liquido_total_clt / meta_proporcional * 100) if meta_proporcional > 0 else 0
 
     st.metric(
-        f"Índice de Remuneração Real ({dias_unicos} dias trabalhados)",
-        f"{indice_clt:.1f}% do Piso CLT",
-        delta=f"R$ {liquido_clt - meta_proporcional:+.2f} vs CLT"
+        "Índice de Remuneração Real (% do Piso CLT)",
+        f"{indice_clt:.1f}%",
+        delta=f"R$ {liquido_total_clt - meta_proporcional:+.2f} vs CLT ({dias_unicos} dias)"
     )
 
     c_clt1, c_clt2 = st.columns(2)
     c_clt1.metric("Meta Líquida CLT (Período)", f"R$ {meta_proporcional:.2f}")
-    c_clt2.metric("Bruto Mínimo de Empate", f"R$ {empate_bruto:.2f}")
+    c_clt2.metric("Faturamento Bruto de Empate", f"R$ {empate_bruto:.2f}")
 
-    st.caption(f"Base CLT 2026: R$ {PISO_CLT_MENSAL:.2f}/mês (Salário Mínimo + 30% Periculosidade + 13º + Férias 1/3 + FGTS + INSS MEI + VA = R$ {META_CLT_DIARIA:.2f}/dia).")
+    st.caption(
+        f"Base CLT 2026: **R$ {PISO_CLT_MENSAL:.2f}/mês** (Salário Mínimo R$ 1.621 + 30% Periculosidade R$ 486,30 + "
+        f"13º + Férias 1/3 + FGTS + INSS MEI + Vale-Alimentação = **R$ {META_CLT_DIARIA:.2f}/dia**)."
+    )
