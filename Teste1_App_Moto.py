@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 
 try:
     from supabase import create_client
@@ -28,7 +28,7 @@ import urllib.parse
 st.set_page_config(page_title="Raio-X do Entregador", page_icon="🏍️", layout="centered")
 
 DATA_FILE = "dados_entregador.json"
-DATA_INICIO_CICLO = "2026-11-22"
+DATA_INICIO_CICLO = "2026-11-21"
 
 ESTABELECIMENTOS_LISTA = [
     "Nenhum (Apenas Apps)",
@@ -396,7 +396,7 @@ tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
 with tab_hoje:
     col_f1, col_f2 = st.columns(2)
     filtro_visao = col_f1.radio("Moto:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
-    filtro_periodo = col_f2.radio("Período:", ["Todos os Registros", f"Ciclo Atual (Pós-{DATA_INICIO_CICLO})"], horizontal=True)
+    filtro_periodo = col_f2.radio("Período:", [f"Ciclo Atual (Desde {DATA_INICIO_CICLO})", "Todos os Registros"], horizontal=True)
 
     turnos_filtrados = [
         t for t in db["turnos"]
@@ -682,23 +682,30 @@ with tab_garagem:
 
     with sub_manut:
         st.subheader("Balanço Caixinha: Previsto vs. Gasto Real")
-        st.caption(f"Comparativo do ciclo iniciado em **{DATA_INICIO_CICLO}** (mesma base da aba Meu Dia quando filtrada pelo Ciclo Atual).")
 
-        turnos_ciclo = [
+        dt_inicio_padrao = datetime.strptime(DATA_INICIO_CICLO, "%Y-%m-%d").date()
+        col_pm1, col_pm2 = st.columns(2)
+        dt_ini_m = col_pm1.date_input("De (Data Inicial):", value=dt_inicio_padrao, key="dt_ini_manut")
+        dt_fim_m = col_pm2.date_input("Até (Data Final):", value=date.today(), key="dt_fim_manut")
+
+        str_ini_m = str(dt_ini_m)
+        str_fim_m = str(dt_fim_m)
+
+        turnos_periodo_m = [
             t for t in db["turnos"]
-            if t.get("moto_id") == moto_ativa["id"] and t["data"] >= DATA_INICIO_CICLO
+            if t.get("moto_id") == moto_ativa["id"] and str_ini_m <= t["data"] <= str_fim_m
         ]
-        km_ciclo = sum(t["km"] for t in turnos_ciclo)
-        reservado_manut_ciclo = km_ciclo * custo_reserva_km
+        km_periodo_m = sum(t["km"] for t in turnos_periodo_m)
+        reservado_manut_periodo = km_periodo_m * custo_reserva_km
 
         manut_moto = [m for m in db.get("manutencoes", []) if m.get("moto_id") == moto_ativa["id"]]
-        manut_ciclo = [m for m in manut_moto if m["data"] >= DATA_INICIO_CICLO]
-        gasto_real_ciclo = sum(float(m["valor_total"]) for m in manut_ciclo)
-        saldo_caixinha_manut = reservado_manut_ciclo - gasto_real_ciclo
+        manut_periodo = [m for m in manut_moto if str_ini_m <= m["data"] <= str_fim_m]
+        gasto_real_periodo = sum(float(m["valor_total"]) for m in manut_periodo)
+        saldo_caixinha_manut = reservado_manut_periodo - gasto_real_periodo
 
         bm1, bm2, bm3 = st.columns(3)
-        bm1.metric(f"Reservado ({km_ciclo} km)", f"R$ {reservado_manut_ciclo:.2f}")
-        bm2.metric("Gasto Real (Pós-22/11)", f"R$ {gasto_real_ciclo:.2f}")
+        bm1.metric(f"Reservado ({km_periodo_m} km)", f"R$ {reservado_manut_periodo:.2f}")
+        bm2.metric("Gasto Real no Período", f"R$ {gasto_real_periodo:.2f}")
         bm3.metric("Saldo da Reserva", f"R$ {saldo_caixinha_manut:+.2f}")
 
         with st.expander("➕ Registrar Nova Manutenção / Serviço Feito", expanded=True):
@@ -743,7 +750,7 @@ with tab_garagem:
         if manut_moto:
             st.markdown("#### Histórico Completo de Serviços")
             df_m = pd.DataFrame(manut_moto).sort_values(by="data", ascending=False)
-            df_m["Período"] = df_m["data"].apply(lambda d: "Ciclo Atual" if d >= DATA_INICIO_CICLO else "Pré-Ciclo (Ref.)")
+            df_m["Período"] = df_m["data"].apply(lambda d: "No Filtro" if str_ini_m <= d <= str_fim_m else "Fora do Filtro")
             st.dataframe(
                 df_m[["data", "Período", "hodometro", "componente", "oficina", "valor_total", "obs"]].rename(
                     columns={"data": "Data", "hodometro": "Km", "componente": "Serviço", "oficina": "Oficina", "valor_total": "Pago (R$)", "obs": "Obs."}
