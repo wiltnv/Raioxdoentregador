@@ -198,7 +198,6 @@ DEFAULT_DATA = {
     "manutencoes": HISTORICO_MANUTENCOES_INICIAL
 }
 
-# --- CONEXÃO SUPABASE ---
 def get_supabase():
     if not HAS_SUPABASE_LIB:
         return None
@@ -269,7 +268,6 @@ def save_data(data, user_key):
         json.dump(data, f, ensure_ascii=False, indent=2)
     return False
 
-# --- FUNÇÕES DE GEOLOCALIZAÇÃO E ROTA ---
 def buscar_enderecos_online(termo):
     if not termo or len(termo.strip()) < 3:
         return []
@@ -324,7 +322,6 @@ def calc_custos_moto(m):
     c_reserva = c_fixos + c_pecas
     return c_gas, c_fixos, c_pecas, c_reserva, (c_gas + c_reserva)
 
-# --- SIDEBAR: SINCRONIZAÇÃO ---
 default_key = ""
 try:
     default_key = st.secrets.get("DEFAULT_USER_KEY", "wil_bros150")
@@ -346,14 +343,12 @@ with st.sidebar:
 
 db = st.session_state.db
 
-# --- SELETOR DE MOTO ATIVA ---
 motos_dict = {m["id"]: m for m in db["motos"]}
 if db["moto_ativa_id"] not in motos_dict:
     db["moto_ativa_id"] = db["motos"][0]["id"]
 
 st.title("🏍️ Raio-X do Entregador")
 
-# Guia Rápido de Onboarding para Novos Usuários
 with st.expander("🧭 Como funciona este aplicativo? (Guia Rápido em 3 Passos)", expanded=False):
     st.markdown("""
     1. **Configure sua moto na aba `🔧 3. Garagem & Manutenções`:** Informe o hodômetro atual, preço da gasolina e consumo médio. O app calcula quanto sua moto custa por quilômetro rodado (combustível + desgaste de peças + seguro/doc).
@@ -385,7 +380,6 @@ with col_top2:
 PISO_CLT_MENSAL = 3254.46
 META_CLT_DIARIA = PISO_CLT_MENSAL / 26.0
 
-# --- NAVEGAÇÃO PRINCIPAL EM 4 ETAPAS LÓGICAS ---
 tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
     "📊 1. Meu Dia (Turnos)",
     "⚡ 2. Simular & Orçar",
@@ -393,9 +387,6 @@ tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
     "⚖️ 4. Termômetro CLT"
 ])
 
-# ==============================================================================
-# ABA 1: MEU DIA (TURNOS)
-# ==============================================================================
 with tab_hoje:
     filtro_visao = st.radio(
         "Exibir resultados de:",
@@ -509,9 +500,6 @@ with tab_hoje:
                 st.toast("Turno removido!")
                 st.rerun()
 
-# ==============================================================================
-# ABA 2: SIMULAR & ORÇAR
-# ==============================================================================
 with tab_sim:
     st.subheader(f"Calculadora de Corrida e Orçamento ({moto['apelido']})")
     modo_sim = st.radio(
@@ -654,33 +642,23 @@ with tab_sim:
         origem_txt = f"{sel_origem['label']} (Nº {num_origem})" if (sel_origem and num_origem) else (sel_origem["label"] if sel_origem else "A definir")
         destino_txt = f"{sel_destino['label']} (Nº {num_destino})" if (sel_destino and num_destino) else (sel_destino["label"] if sel_destino else "A definir")
 
-        msg_whats = (
-            f"🏍️ *ORÇAMENTO DE ENTREGA*
-"
-            f"📍 *Retirada:* {origem_txt}
-"
-            f"🏁 *Entrega:* {destino_txt}
-"
-            f"📏 *Distância considerada:* {km_cobrado_cliente:.1f} km
-"
-            f"💰 *Valor da Corrida:* R$ {valor_orcamento:.2f}
-
-"
-            f"Posso confirmar a coleta?"
-        )
+        msg_whats = "\n".join([
+            "🏍️ *ORÇAMENTO DE ENTREGA*",
+            f"📍 *Retirada:* {origem_txt}",
+            f"🏁 *Entrega:* {destino_txt}",
+            f"📏 *Distância considerada:* {km_cobrado_cliente:.1f} km",
+            f"💰 *Valor da Corrida:* R$ {valor_orcamento:.2f}",
+            "",
+            "Posso confirmar a coleta?"
+        ])
         st.text_area("📲 Copie e envie no WhatsApp do Cliente:", value=msg_whats, height=165)
 
-# ==============================================================================
-# ABA 3: GARAGEM & MANUTENÇÕES (COM HISTÓRICO REAL VS CAIXINHA PREVISTA)
-# ==============================================================================
 with tab_garagem:
-    # --- NOVO BLOCO: PLACAR CAIXINHA PREVISTA VS GASTO REAL ---
     st.subheader(f"💰 Balanço da Caixinha: Previsto vs. Gasto Real ({moto['apelido']})")
 
     turnos_moto = [t for t in db["turnos"] if t.get("moto_id", "moto_1") == moto["id"]]
     manuts_moto = [m for m in db.get("manutencoes", []) if m.get("moto_id", "moto_1") == moto["id"]]
 
-    # Reserva acumulada pelos km registrados no app + base histórica opcional
     reserva_acumulada_app = sum(t["km"] * t.get("custo_reserva_km", custo_reserva_km) for t in turnos_moto)
     total_gasto_manut_real = sum(m["valor_total"] for m in manuts_moto)
 
@@ -691,7 +669,6 @@ with tab_garagem:
 
     st.divider()
 
-    # --- FORMULÁRIO DE REGISTRO DE MANUTENÇÃO FEITA (IGUAL ABA HISTÓRICO TROCAS) ---
     st.subheader("🛠️ Registrar Manutenção / Serviço Realizado")
     with st.expander("➕ Lançar Nova Manutenção Feita na Oficina", expanded=False):
         with st.form("form_nova_manutencao"):
@@ -724,7 +701,6 @@ with tab_garagem:
                 }
                 db.setdefault("manutencoes", []).append(novo_reg)
 
-                # Sincroniza automaticamente com o painel de desgaste e custo/km da moto
                 if atualizar_param:
                     for p in moto["pecas"]:
                         if p["nome"] == comp_escolhido:
@@ -758,7 +734,6 @@ with tab_garagem:
                 hide_index=True
             )
 
-            # Excluir registro de manutenção errado
             opcoes_del_m = [
                 f"{i} | {m['data']} — {m['componente']} ({m['hodometro']} km | R$ {m['valor_total']:.2f})"
                 for i, m in enumerate(db["manutencoes"])
@@ -776,7 +751,6 @@ with tab_garagem:
 
     st.divider()
 
-    # --- PAINEL DE ALERTAS DE DESGASTE PREVENTIVO ---
     st.subheader(f"🚦 Alertas de Desgaste Preventivo ({moto['apelido']})")
     for idx, p in enumerate(moto["pecas"]):
         rodados = moto["hodometro"] - p["ultima_km"]
@@ -794,8 +768,7 @@ with tab_garagem:
 
     st.divider()
 
-    # --- CONFIGURAÇÕES DA MOTO ATIVA E CADASTRO MULTI-MOTO ---
-    st.subheader(f"⚙️ Parâmetros de Combustível, Fixos e Multi-Moto")
+    st.subheader("⚙️ Parâmetros de Combustível, Fixos e Multi-Moto")
     with st.expander("Editar Gasolina, Consumo, Hodômetro e Custos Fixos"):
         with st.form("form_config_moto"):
             cg0_1, cg0_2 = st.columns(2)
@@ -877,9 +850,6 @@ with tab_garagem:
                 st.success("Nova moto cadastrada!")
                 st.rerun()
 
-# ==============================================================================
-# ABA 4: TERMÔMETRO CLT
-# ==============================================================================
 with tab_clt:
     st.subheader("Comparativo Real vs. CLT (+30% Periculosidade)")
     dias_unicos = len(set(t["data"] for t in db["turnos"]))
