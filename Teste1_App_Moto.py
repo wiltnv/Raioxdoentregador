@@ -92,6 +92,7 @@ CATALOGO_MOTOS = {
         ]
     }
 }
+
 MANUTENCOES_RETROATIVAS = [
     {"data": "2026-04-10", "moto_id": "moto_1", "hodometro": 58098, "componente": "Bateria (Partida Elétrica)", "oficina": "Poty", "valor_peca": 180.0, "valor_total": 180.0, "obs": "Retroativo pre-ciclo"},
     {"data": "2026-07-24", "moto_id": "moto_1", "hodometro": 68824, "componente": "Par de Pneus", "oficina": "Amaral", "valor_peca": 288.0, "valor_total": 308.0, "obs": "Retroativo pre-ciclo"},
@@ -164,7 +165,7 @@ def migrate_data(raw):
                 "seguro_anual": float(m_old.get("seguro_anual", 984.08)),
                 "licenciamento_anual": float(m_old.get("licenciamento_anual", 174.08)),
                 "projecao_anual_km": float(m_old.get("projecao_anual_km", 37286.64)),
-                "pecas": raw.get("pecas", default["motos"]["pecas"])
+                "pecas": raw.get("pecas", default["motos"][0]["pecas"])
             }]
         else:
             raw["motos"] = default["motos"]
@@ -192,7 +193,7 @@ def migrate_data(raw):
     raw["motos"] = valid_motos if valid_motos else default["motos"]
     ids_validos = [m["id"] for m in raw["motos"]]
     if raw.get("moto_ativa_id") not in ids_validos:
-        raw["moto_ativa_id"] = ids_validos
+        raw["moto_ativa_id"] = ids_validos[0]
 
     if "turnos" not in raw or not isinstance(raw["turnos"], list):
         raw["turnos"] = []
@@ -221,6 +222,7 @@ def migrate_data(raw):
         raw["abastecimentos"] = []
 
     return raw
+
 def get_supabase():
     if not HAS_SUPABASE:
         return None
@@ -239,7 +241,7 @@ def load_state(user_key):
         try:
             res = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
             if res.data and len(res.data) > 0:
-                return migrate_data(res.data["state_json"]), True
+                return migrate_data(res.data[0]["state_json"]), True
         except Exception:
             pass
     if os.path.exists(DATA_FILE):
@@ -290,7 +292,7 @@ def buscar_enderecos_online(query):
     cep_digits = re.sub(r"\D", "", q_clean)
     if len(cep_digits) == 8:
         try:
-            url_cep = f"https://viacep.com.br{cep_digits}/json/"
+            url_cep = f"https://viacep.com.br/ws/{cep_digits}/json/"
             req = urllib.request.Request(url_cep, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
             with urllib.request.urlopen(req, timeout=4) as resp:
                 d_cep = json.loads(resp.read().decode("utf-8"))
@@ -301,7 +303,7 @@ def buscar_enderecos_online(query):
 
     try:
         q_enc = urllib.parse.quote(q_clean)
-        url_ph = f"https://komoot.io{q_enc}&limit=6&lat=-22.357&lon=-47.384"
+        url_ph = f"https://photon.komoot.io/api/?q={q_enc}&limit=6&lat=-22.357&lon=-47.384"
         req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -324,14 +326,14 @@ def buscar_enderecos_online(query):
                     partes.append(f"{cidade} - {estado}" if estado else cidade)
                 label = ", ".join(partes) if partes else props.get("name", "")
                 if label and len(coords) == 2:
-                    add_item(label, coords, coords)
+                    add_item(label, coords[1], coords[0])
     except Exception:
         pass
 
     if len(resultados) < 3:
         try:
             q_enc = urllib.parse.quote(q_clean)
-            url_nom = f"https://openstreetmap.org{q_enc}&format=json&addressdetails=1&countrycodes=br&limit=5"
+            url_nom = f"https://nominatim.openstreetmap.org/search?q={q_enc}&format=json&addressdetails=1&countrycodes=br&limit=5"
             req = urllib.request.Request(url_nom, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 items = json.loads(resp.read().decode("utf-8"))
@@ -353,20 +355,21 @@ def buscar_enderecos_online(query):
 
 def calcular_rota_osrm(coord1, coord2):
     try:
-        lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1
-        lon1 = coord1["lon"] if isinstance(coord1, dict) else coord1
-        lat2 = coord2["lat"] if isinstance(coord2, dict) else coord2
-        lon2 = coord2["lon"] if isinstance(coord2, dict) else coord2
-        url = f"http://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false"
+        lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1[0]
+        lon1 = coord1["lon"] if isinstance(coord1, dict) else coord1[1]
+        lat2 = coord2["lat"] if isinstance(coord2, dict) else coord2[0]
+        lon2 = coord2["lon"] if isinstance(coord2, dict) else coord2[1]
+        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
         req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("code") == "Ok" and data.get("routes"):
-                r = data["routes"]
+                r = data["routes"][0]
                 return round(r["distance"] / 1000.0, 2), round(r["duration"] / 60.0)
     except Exception:
         pass
     return None, None
+
 with st.sidebar:
     st.header("☁️ Sincronização")
     default_key = "wil_bros150"
@@ -396,7 +399,7 @@ with st.sidebar:
         st.warning("Modo Local (Arquivo JSON)")
 
 motos_dict = {m["id"]: m for m in db["motos"]}
-col_t1, col_t2 = st.columns()
+col_t1, col_t2 = st.columns([1.6, 1])
 col_t1.title("🏍️ Raio-X do Entregador")
 moto_escolhida_id = col_t2.selectbox(
     "Moto Ativa no Turno:",
@@ -472,7 +475,7 @@ with tab_hoje:
 
     with st.expander("➕ Registrar Novo Turno (Fechamento Rápido)", expanded=True):
         with st.form("form_turno"):
-            col_d, col1, col2 = st.columns()
+            col_d, col1, col2 = st.columns([1.2, 1, 1])
             data_turno = col_d.date_input("Data", value=date.today())
             km_ini = col1.number_input("Km Inicial", value=int(moto_ativa["hodometro"]), step=1)
             km_fim = col2.number_input("Km Final", value=int(moto_ativa["hodometro"]), step=1)
@@ -538,10 +541,11 @@ with tab_hoje:
             ]
             sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
             if st.button("Confirmar Exclusão do Turno", type="primary"):
-                idx_rem = int(sel_ex.split(" | "))
+                idx_rem = int(sel_ex.split(" | ")[0])
                 db["turnos"].pop(idx_rem)
                 save_state(user_key, db)
                 st.rerun()
+
 with tab_sim:
     modo_sim = st.radio("Modo:", ["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"], horizontal=True)
 
@@ -591,7 +595,7 @@ with tab_sim:
                 if res_part:
                     coord_partida = res_part
 
-        col_e1, col_e2 = st.columns()
+        col_e1, col_e2 = st.columns([3, 1])
         coord_retirada, label_retirada = None, ""
         with col_e1:
             if HAS_SEARCHBOX:
@@ -603,7 +607,7 @@ with tab_sim:
                 label_retirada = st.text_input("Endereço de Retirada")
         num_ret = col_e2.text_input("Nº / Compl. (Ret.)", key="num_ret")
 
-        col_e3, col_e4 = st.columns()
+        col_e3, col_e4 = st.columns([3, 1])
         coord_entrega, label_entrega = None, ""
         with col_e3:
             if HAS_SEARCHBOX:
@@ -655,9 +659,10 @@ with tab_sim:
             f"📏 *Distância:* {km_cobrado:.1f} km",
             f"💰 *Valor Total:* R$ {preco_cliente:.2f}"
         ])
-        link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
+        link_whats = f"https://wa.me/?text={urllib.parse.quote(msg_whats)}"
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
         st.text_area("Ou copie a mensagem manualmente:", value=msg_whats, height=135)
+
 with tab_garagem:
     sub_pecas, sub_manut, sub_abast, sub_config = st.tabs([
         "🔧 Saúde das Peças",
@@ -674,7 +679,7 @@ with tab_garagem:
             pct = min(max(rodados / max(int(p["intervalo"]), 1), 0.0), 1.0)
             status_icon = "🟢 OK" if restantes > p["intervalo"] * 0.15 else ("🟡 ATENÇÃO" if restantes > 0 else "🔴 VENCIDO")
 
-            cp1, cp2 = st.columns()
+            cp1, cp2 = st.columns([3.5, 1.2])
             cp1.markdown(f"**{p['nome']}** — {status_icon} (`{restantes:,} km restantes` | Base: R$ {p['custo']:.0f})")
             cp1.progress(pct)
             if cp2.button("Troquei Hoje", key=f"troca_{moto_ativa['id']}_{idx}", use_container_width=True):
@@ -794,7 +799,7 @@ with tab_garagem:
             indices_m = [i for i, m in enumerate(db["manutencoes"]) if m.get("moto_id") == moto_ativa["id"]]
             opcoes_m = [f"{i} | {db['manutencoes'][i]['data']} — {db['manutencoes'][i]['componente']} (Km {db['manutencoes'][i]['hodometro']} | R$ {db['manutencoes'][i]['valor_total']:.2f})" for i in indices_m]
             sel_m = st.selectbox("Selecione o registro para editar ou apagar:", options=opcoes_m, key="sel_edit_manut_web")
-            idx_m_edit = int(sel_m.split(" | "))
+            idx_m_edit = int(sel_m.split(" | ")[0])
             m_reg = db["manutencoes"][idx_m_edit]
 
             em1, em2, em3 = st.columns(3)
