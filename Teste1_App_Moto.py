@@ -251,20 +251,7 @@ with tab_sim:
             else:
                 label_entrega = st.text_input("Endereço de Entrega")
         num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
-
-
-        coord_entrega, label_entrega = None, ""
-        if q_ent and len(q_ent.strip()) >= 3:
-            op_ent = buscar_enderecos_online(q_ent)
-            if op_ent:
-                dict_ent = dict(op_ent)
-                esc_ent = st.selectbox("🏁 Confirme o endereço de Entrega:", options=list(dict_ent.keys()), key="sel_ent")
-                coord_entrega = dict_ent[esc_ent]
-                label_entrega = esc_ent
-            else:
-                label_entrega = q_ent.strip()
-                st.caption("⚠️ Endereço não localizado no mapa (você pode ajustar o Km manualmente abaixo).")
-       
+             
         km_desloc = 0.0
         km_entrega_auto = 6.0
         tempo_total_min = 0
