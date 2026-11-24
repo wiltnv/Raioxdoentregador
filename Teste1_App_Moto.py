@@ -252,6 +252,9 @@ with tab_sim:
                 label_entrega = st.text_input("Endereço de Entrega")
         num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
 
+        if st.session_state.get("debug_busca"):
+            st.caption(f"🔍 Status da busca: `{st.session_state['debug_busca']}`")
+       
         km_desloc = 0.0
         km_entrega_auto = 6.0
         tempo_total_min = 0
