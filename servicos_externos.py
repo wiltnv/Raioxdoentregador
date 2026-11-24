@@ -72,7 +72,6 @@ def buscar_enderecos_online(query):
             vistos.add(chave)
             resultados.append((label, {"lat": float(lat), "lon": float(lon), "label": label}))
 
-    # 1. ViaCEP (quando digitado CEP de 8 digitos)
     cep_digits = re.sub(r"\D", "", q_clean)
     if len(cep_digits) == 8:
         try:
@@ -85,7 +84,6 @@ def buscar_enderecos_online(query):
         except Exception:
             pass
 
-    # 2. ArcGIS World Geocoding (Estilo Google Maps: acha comercios, numeros e prioriza Araras/regiao)
     try:
         params_arc = urllib.parse.urlencode({
             "SingleLine": q_clean,
@@ -110,7 +108,6 @@ def buscar_enderecos_online(query):
     except Exception:
         pass
 
-    # 3. Photon OpenStreetMap (complemento com vies local)
     if len(resultados) < 5:
         try:
             q_enc = urllib.parse.quote(q_clean)
@@ -131,12 +128,11 @@ def buscar_enderecos_online(query):
                     partes = [p for p in [f"{rua}, {numero}" if (rua and numero) else rua, bairro, f"{cidade} - {estado}" if (cidade and estado) else cidade] if p]
                     label = ", ".join(partes) if partes else props.get("name", "")
                     if label and len(coords) == 2:
-                        add_item(label, coords, coords)
+                        add_item(label, coords[1], coords[0])
         except Exception:
             pass
 
     return resultados[:6]
-
 
 def calcular_rota_osrm(coord1, coord2):
     try:
