@@ -7,18 +7,31 @@ Raio-X do Entregador
 import urllib.parse
 import requests
 
+# Constantes CLT 2026 (exportadas diretamente para o Teste1_App_Moto.py)
+SALARIO_BASE_SP_2026 = 1850.00
+PERICULOSIDADE_PCT = 0.30
+SALARIO_COM_PERICULOSIDADE = 2405.00
+FERIAS_TERCO_MENSAL = 267.22
+DECIMO_TERCEIRO_MENSAL = 200.42
+FGTS_MENSAL = 192.40
+VALE_ALIMENTACAO_MENSAL = 200.00
+DIAS_UTEIS_MES = 26
+HORAS_DIA_CLT = 8.0
+PISO_DIARIO_CLT_2026 = 125.17
+PISO_HORA_CLT_2026 = 15.65
+
 CLT_REFERENCIA = {
-    "salario_base_sp": 1850.00,
-    "periculosidade_pct": 0.30,
-    "salario_com_periculosidade": 2405.00,
-    "ferias_terco_mensal": 267.22,
-    "decimo_terceiro_mensal": 200.42,
-    "fgts_mensal": 192.40,
-    "vale_alimentacao": 200.00,
-    "dias_uteis_mes": 26,
-    "horas_dia": 8.0,
-    "meta_diaria": 125.17,
-    "meta_hora": 15.65,
+    "salario_base_sp": SALARIO_BASE_SP_2026,
+    "periculosidade_pct": PERICULOSIDADE_PCT,
+    "salario_com_periculosidade": SALARIO_COM_PERICULOSIDADE,
+    "ferias_terco_mensal": FERIAS_TERCO_MENSAL,
+    "decimo_terceiro_mensal": DECIMO_TERCEIRO_MENSAL,
+    "fgts_mensal": FGTS_MENSAL,
+    "vale_alimentacao": VALE_ALIMENTACAO_MENSAL,
+    "dias_uteis_mes": DIAS_UTEIS_MES,
+    "horas_dia": HORAS_DIA_CLT,
+    "meta_diaria": PISO_DIARIO_CLT_2026,
+    "meta_hora": PISO_HORA_CLT_2026,
 }
 
 
@@ -127,8 +140,8 @@ def calcular_equivalencia_clt(lucro_liquido_total: float, dias_trabalhados: int,
     dias = max(int(dias_trabalhados), 1)
     horas = max(float(horas_trabalhadas), 0.1)
 
-    meta_diaria = CLT_REFERENCIA["meta_diaria"]
-    meta_hora = CLT_REFERENCIA["meta_hora"]
+    meta_diaria = PISO_DIARIO_CLT_2026
+    meta_hora = PISO_HORA_CLT_2026
 
     referencia_clt_periodo = dias * meta_diaria
     saldo_vs_clt = lucro_liquido_total - referencia_clt_periodo
