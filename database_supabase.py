@@ -5,7 +5,7 @@ Raio-X do Entregador
 """
 
 import copy
-from datetime import datetime
+from datetime import datetime, timezone
 import streamlit as st
 from supabase import create_client, Client
 from catalogo_motos import criar_moto_do_catalogo
@@ -117,12 +117,14 @@ def carregar_estado(user_key: str) -> dict:
     if sb:
         try:
             resp = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
-            if resp.data and len(resp.data) > 0 and resp.data[0].get("state_json"):
-                estado = resp.data[0]["state_json"]
-                if "motos" in estado and estado["motos"]:
-                    return estado
-        except Exception:
-            pass
+            if resp.data and isinstance(resp.data, list) and len(resp.data) > 0:
+                registro = resp.data[0]
+                if isinstance(registro, dict) and registro.get("state_json"):
+                    estado = registro["state_json"]
+                    if isinstance(estado, dict) and estado.get("motos"):
+                        return estado
+        except Exception as e:
+            st.warning(f"Aviso ao carregar dados do banco: {e}")
 
     estado_inicial = criar_estado_inicial()
     if sb:
@@ -137,12 +139,12 @@ def salvar_estado(user_key: str, estado: dict) -> bool:
     try:
         payload = {
             "user_key": user_key,
-            "state_json": copy.deepcopy(estado),
-            "updated_at": datetime.utcnow().isoformat()
+            "state_json": copy.deepcopy(estado)
         }
-        sb.table("user_states").upsert(payload).execute()
+        sb.table("user_states").upsert(payload, on_conflict="user_key").execute()
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"Erro ao salvar no Supabase: {e}")
         return False
 
 
