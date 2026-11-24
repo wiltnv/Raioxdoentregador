@@ -59,7 +59,8 @@ def save_state(user_key, data):
     except Exception:
         pass
     return ok_cloud
-
+    
+@st.cache_data(ttl=3600, show_spinner=False)
 def buscar_enderecos_online(query):
     if not query or len(query.strip()) < 3:
         return []
