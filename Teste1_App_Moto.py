@@ -315,7 +315,6 @@ with tab_sim:
             f'📲 Enviar Orçamento no WhatsApp</a>',
             unsafe_allow_html=True
         )
-      
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
 
