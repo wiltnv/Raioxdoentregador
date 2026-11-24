@@ -13,20 +13,28 @@ from catalogo_motos import criar_moto_do_catalogo
 DATA_INICIO_CICLO = "2026-11-21"
 
 
+def _limpar_url_supabase(raw_url: str) -> str:
+    url = str(raw_url or "").strip().rstrip("/")
+    for sufixo in ("/rest/v1", "/auth/v1", "/storage/v1"):
+        if url.endswith(sufixo):
+            url = url[: -len(sufixo)]
+    return url.rstrip("/")
+
+
 def get_supabase_client() -> Client | None:
     try:
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
+        url = _limpar_url_supabase(st.secrets.get("SUPABASE_URL", ""))
+        key = str(st.secrets.get("SUPABASE_KEY", "")).strip()
         if url and key:
             return create_client(url, key)
-    except Exception:
-        pass
+    except Exception as e:
+        st.session_state["sb_erro_conexao"] = str(e)
     return None
 
 
 def get_default_user_key() -> str:
     try:
-        return st.secrets.get("DEFAULT_USER_KEY", "wil_bros150")
+        return str(st.secrets.get("DEFAULT_USER_KEY", "wil_bros150")).strip() or "wil_bros150"
     except Exception:
         return "wil_bros150"
 
@@ -36,7 +44,7 @@ def criar_estado_inicial() -> dict:
         moto_id="moto_bros_2008",
         apelido="Bros 150 ESD 2008",
         modelo_catalogo="Honda NXR 150 Bros ESD 2008 (Carburada)",
-        hodometro_inicial=81260
+        hodometro_inicial=81260,
     )
 
     ultimas_km = {
@@ -48,7 +56,7 @@ def criar_estado_inicial() -> dict:
         "Cabos + Lubrificação": 70050,
         "Kit Relação / Transmissão": 75056,
         "Par de Pneus": 68824,
-        "Bateria (Partida Elétrica)": 58098
+        "Bateria (Partida Elétrica)": 58098,
     }
 
     for peca in moto_padrao["pecas"]:
@@ -66,7 +74,7 @@ def criar_estado_inicial() -> dict:
             "bruto": 348.00,
             "horas": 10.0,
             "estabelecimento": "Sta. Efigênia / Golden",
-            "obs": "Turno inicial calibrado"
+            "obs": "Turno inicial calibrado",
         },
         {
             "id": "turno_init_2",
@@ -78,8 +86,8 @@ def criar_estado_inicial() -> dict:
             "bruto": 136.00,
             "horas": 6.0,
             "estabelecimento": "Nenhum (Apenas Apps)",
-            "obs": "Turno inicial calibrado"
-        }
+            "obs": "Turno inicial calibrado",
+        },
     ]
 
     manutencoes_iniciais = [
@@ -90,7 +98,7 @@ def criar_estado_inicial() -> dict:
         {"id": "man_hist_5", "data": "2026-09-18", "moto_id": "moto_bros_2008", "km": 74545, "peca": "Pastilha Freio Dianteiro (ESD)", "tipo": "Preventiva", "oficina": "Amaral", "valor": 60.00, "obs": "Histórico pré-ciclo"},
         {"id": "man_hist_6", "data": "2026-09-18", "moto_id": "moto_bros_2008", "km": 74545, "peca": "Lona Freio Traseiro", "tipo": "Preventiva", "oficina": "Amaral", "valor": 40.00, "obs": "Histórico pré-ciclo"},
         {"id": "man_hist_7", "data": "2026-09-23", "moto_id": "moto_bros_2008", "km": 75056, "peca": "Kit Relação / Transmissão", "tipo": "Preventiva", "oficina": "Amaral", "valor": 225.00, "obs": "Histórico pré-ciclo"},
-        {"id": "man_hist_8", "data": "2026-11-14", "moto_id": "moto_bros_2008", "km": 80346, "peca": "Troca de Óleo", "tipo": "Preventiva", "oficina": "Amaral", "valor": 34.00, "obs": "Histórico pré-ciclo"}
+        {"id": "man_hist_8", "data": "2026-11-14", "moto_id": "moto_bros_2008", "km": 80346, "peca": "Troca de Óleo", "tipo": "Preventiva", "oficina": "Amaral", "valor": 34.00, "obs": "Histórico pré-ciclo"},
     ]
 
     return {
@@ -99,7 +107,7 @@ def criar_estado_inicial() -> dict:
         "estado": "SP",
         "moto_ativa_id": "moto_bros_2008",
         "motos": {
-            "moto_bros_2008": moto_padrao
+            "moto_bros_2008": moto_padrao,
         },
         "turnos": turnos_iniciais,
         "abastecimentos": [],
@@ -107,8 +115,8 @@ def criar_estado_inicial() -> dict:
         "orcamento_config": {
             "valor_km": 2.00,
             "taxa_minima": 8.00,
-            "retorno_incluso": True
-        }
+            "retorno_incluso": True,
+        },
     }
 
 
@@ -117,12 +125,12 @@ def carregar_estado(user_key: str) -> dict:
     if sb:
         try:
             resp = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
-            if resp.data and isinstance(resp.data, list) and len(resp.data) > 0:
-                registro = resp.data[0]
-                if isinstance(registro, dict) and registro.get("state_json"):
-                    estado = registro["state_json"]
-                    if isinstance(estado, dict) and estado.get("motos"):
-                        return estado
+            if resp.data and len(resp.data) > 0:
+                registro = resp.data
+                estado = registro.get("state_json")
+                if isinstance(estado, dict) and "motos" in estado and estado["motos"]:
+                    st.session_state["sb_conectado"] = True
+                    return estado
         except Exception as e:
             st.warning(f"Aviso ao carregar dados do banco: {e}")
 
@@ -139,9 +147,11 @@ def salvar_estado(user_key: str, estado: dict) -> bool:
     try:
         payload = {
             "user_key": user_key,
-            "state_json": copy.deepcopy(estado)
+            "state_json": copy.deepcopy(estado),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         sb.table("user_states").upsert(payload, on_conflict="user_key").execute()
+        st.session_state["sb_conectado"] = True
         return True
     except Exception as e:
         st.error(f"Erro ao salvar no Supabase: {e}")
@@ -158,7 +168,7 @@ def registrar_metrica_observatorio(cidade: str, estado_uf: str, categoria_moto: 
             "estado": estado_uf.strip().upper() or "SP",
             "categoria_moto": categoria_moto,
             "custo_real_km": round(float(custo_km), 4),
-            "indice_clt": round(float(indice_clt), 2)
+            "indice_clt": round(float(indice_clt), 2),
         }).execute()
     except Exception:
         pass
