@@ -21,6 +21,10 @@ PISO_HORA_CLT_2026 = 15.65
 
 
 def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> dict:
+    moto_id = moto.get("id", "moto_bros_2008")
+    preco_comb = float(moto.get("preco_combustivel", 6.19))
+    consumo = max(float(moto.get("consumo_km_l", 35.0)), 1.0)
+
     if isinstance(contexto, dict):
         turnos = contexto.get("turnos", [])
         km_total = sum(float(t.get("km_rodado", 0.0)) for t in turnos)
@@ -29,11 +33,28 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
             km_mes = max((km_total / dias) * DIAS_UTEIS_MES, 1000.0)
         else:
             km_mes = 2500.0
+
+        abast_moto = [
+            a for a in contexto.get("abastecimentos", [])
+            if a.get("moto_id", moto_id) == moto_id
+        ]
+        if abast_moto:
+            litros_totais = sum(float(a.get("litros", 0.0)) for a in abast_moto)
+            valor_totais = sum(float(a.get("valor_total", 0.0)) for a in abast_moto)
+            if litros_totais > 0 and valor_totais > 0:
+                preco_comb = valor_totais / litros_totais
+            kms_abast = [int(a.get("km", 0)) for a in abast_moto if int(a.get("km", 0)) > 0]
+            if len(kms_abast) >= 2:
+                delta_km = max(kms_abast) - min(kms_abast)
+                litros_apos_primeiro = sum(
+                    float(a.get("litros", 0.0))
+                    for a in sorted(abast_moto, key=lambda x: int(x.get("km", 0)))[1:]
+                )
+                if delta_km > 0 and litros_apos_primeiro > 0:
+                    consumo = delta_km / litros_apos_primeiro
     else:
         km_mes = max(float(contexto), 500.0)
 
-    preco_comb = float(moto.get("preco_combustivel", 6.19))
-    consumo = max(float(moto.get("consumo_km_l", 35.0)), 1.0)
     custo_combustivel_km = preco_comb / consumo
 
     custo_pecas_km = 0.0
@@ -56,14 +77,19 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
     custo_total_km = custo_combustivel_km + custo_pecas_km + custo_fixo_km
 
     return {
+        "custo_comb_km": round(custo_combustivel_km, 4),
+        "custo_pecas_km": round(custo_pecas_km, 4),
+        "custo_fixo_km": round(custo_fixo_km, 4),
+        "custo_km_total": round(custo_total_km, 4),
         "custo_km_combustivel": round(custo_combustivel_km, 4),
         "custo_km_pecas": round(custo_pecas_km, 4),
         "custo_km_fixo": round(custo_fixo_km, 4),
-        "custo_km_total": round(custo_total_km, 4),
         "combustivel_km": round(custo_combustivel_km, 4),
         "pecas_km": round(custo_pecas_km, 4),
         "fixo_km": round(custo_fixo_km, 4),
         "total_km": round(custo_total_km, 4),
+        "consumo_real": round(consumo, 1),
+        "preco_combustivel_real": round(preco_comb, 2),
         "custo_fixo_mensal": round(custo_fixo_mensal, 2),
         "km_mes_estimado": round(km_mes, 1),
     }
@@ -177,4 +203,3 @@ def gerar_texto_whatsapp_rota(
     )
     link = f"https://wa.me{urllib.parse.quote(texto)}"
     return texto, link
-
