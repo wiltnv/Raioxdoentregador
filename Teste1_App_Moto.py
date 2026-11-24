@@ -223,35 +223,35 @@ with tab_sim:
             else:
                 st.warning("Pacote streamlit-js-eval não instalado.")
         elif modo_partida == "🏍️ Digitar Rua onde estou":
-            q_part = st.text_input("Onde você está agora? (Ex: Av. Loreto, Araras)", key="q_part")
-            if q_part and len(q_part.strip()) >= 3:
-                op_part = buscar_enderecos_online(q_part)
-                if op_part:
-                    dict_part = dict(op_part)
-                    esc_part = st.selectbox("Selecione seu ponto de partida:", options=list(dict_part.keys()), key="sel_part")
-                    coord_partida = dict_part[esc_part]
-                else:
-                    st.warning("Local de partida não encontrado. Tente incluir a cidade (ex: Araras).")
+            if HAS_SEARCHBOX:
+                res_part = st_searchbox(buscar_enderecos_online, placeholder="Ex: Av. Loreto", key="sb_part")
+                if isinstance(res_part, dict):
+                    coord_partida = res_part
 
         col_e1, col_e2 = st.columns([3, 1])
-        q_ret = col_e1.text_input("🔎 Buscar Retirada (Rua, Comércio ou CEP):", placeholder="Ex: Rua Guerino, Araras", key="q_ret")
-        num_ret = col_e2.text_input("Nº / Compl.", key="num_ret")
-
         coord_retirada, label_retirada = None, ""
-        if q_ret and len(q_ret.strip()) >= 3:
-            op_ret = buscar_enderecos_online(q_ret)
-            if op_ret:
-                dict_ret = dict(op_ret)
-                esc_ret = st.selectbox("📍 Confirme o endereço de Retirada:", options=list(dict_ret.keys()), key="sel_ret")
-                coord_retirada = dict_ret[esc_ret]
-                label_retirada = esc_ret
+        with col_e1:
+            if HAS_SEARCHBOX:
+                res_ret = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Retirada (Rua, Comércio ou CEP)", key="sb_ret")
+                if isinstance(res_ret, dict):
+                    coord_retirada = res_ret
+                    label_retirada = res_ret.get("label", "")
             else:
-                label_retirada = q_ret.strip()
-                st.caption("⚠️ Endereço não localizado no mapa (você pode ajustar o Km manualmente abaixo).")
+                label_retirada = st.text_input("Endereço de Retirada")
+        num_ret = col_e2.text_input("Nº / Compl. (Ret.)", key="num_ret")
 
         col_e3, col_e4 = st.columns([3, 1])
-        q_ent = col_e3.text_input("🔎 Buscar Entrega (Rua, Comércio ou CEP):", placeholder="Ex: Av. Dona Renata, Araras", key="q_ent")
-        num_ent = col_e4.text_input("Nº / Compl.", key="num_ent")
+        coord_entrega, label_entrega = None, ""
+        with col_e3:
+            if HAS_SEARCHBOX:
+                res_ent = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Entrega (Rua, Comércio ou CEP)", key="sb_ent")
+                if isinstance(res_ent, dict):
+                    coord_entrega = res_ent
+                    label_entrega = res_ent.get("label", "")
+            else:
+                label_entrega = st.text_input("Endereço de Entrega")
+        num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
+
 
         coord_entrega, label_entrega = None, ""
         if q_ent and len(q_ent.strip()) >= 3:
