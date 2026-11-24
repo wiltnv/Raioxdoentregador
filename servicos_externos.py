@@ -72,6 +72,7 @@ def buscar_enderecos_online(query):
             vistos.add(chave)
             resultados.append((label, {"lat": float(lat), "lon": float(lon), "label": label}))
 
+    # 1. ViaCEP (quando digitado CEP de 8 digitos)
     cep_digits = re.sub(r"\D", "", q_clean)
     if len(cep_digits) == 8:
         try:
@@ -84,51 +85,58 @@ def buscar_enderecos_online(query):
         except Exception:
             pass
 
+    # 2. ArcGIS World Geocoding (Estilo Google Maps: acha comercios, numeros e prioriza Araras/regiao)
     try:
-        q_enc = urllib.parse.quote(q_clean)
-        url_ph = f"https://komoot.io{q_enc}&limit=6&lat=-22.357&lon=-47.384"
-        req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            for feat in data.get("features", []):
-                props = feat.get("properties", {})
-                if props.get("countrycode", "BR").upper() not in ["BR", ""]:
-                    continue
-                coords = feat.get("geometry", {}).get("coordinates", [])
-                rua = props.get("street") or props.get("name") or ""
-                numero = props.get("housenumber") or ""
-                bairro = props.get("district") or props.get("suburb") or ""
-                cidade = props.get("city") or props.get("town") or props.get("municipality") or ""
-                estado = props.get("state") or ""
-                partes = [p for p in [f"{rua}, {numero}" if (rua and numero) else rua, bairro, f"{cidade} - {estado}" if (cidade and estado) else cidade] if p]
-                label = ", ".join(partes) if partes else props.get("name", "")
-                if label and len(coords) == 2:
-                    add_item(label, coords[1], coords[0])
+        params_arc = urllib.parse.urlencode({
+            "SingleLine": q_clean,
+            "f": "json",
+            "countryCode": "BRA",
+            "location": "-47.384,-22.357",
+            "maxLocations": 6,
+            "outFields": "Match_addr,PlaceName"
+        })
+        url_arc = f"https://arcgis.com?{params_arc}"
+        req = urllib.request.Request(url_arc, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data_arc = json.loads(resp.read().decode("utf-8"))
+            for cand in data_arc.get("candidates", []):
+                attrs = cand.get("attributes", {})
+                loc = cand.get("location", {})
+                place = attrs.get("PlaceName", "").strip()
+                addr = attrs.get("Match_addr", "").strip()
+                label = f"{place} — {addr}" if (place and place.lower() not in addr.lower()) else addr
+                if label and loc.get("y") and loc.get("x"):
+                    add_item(label, loc["y"], loc["x"])
     except Exception:
         pass
 
-    if len(resultados) < 3:
+    # 3. Photon OpenStreetMap (complemento com vies local)
+    if len(resultados) < 5:
         try:
             q_enc = urllib.parse.quote(q_clean)
-            url_nom = f"https://openstreetmap.org{q_enc}&format=json&addressdetails=1&countrycodes=br&limit=5"
-            req = urllib.request.Request(url_nom, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                items = json.loads(resp.read().decode("utf-8"))
-                for it in items:
-                    addr = it.get("address", {})
-                    rua = addr.get("road") or addr.get("pedestrian") or it.get("name", "")
-                    num = addr.get("house_number", "")
-                    bairro = addr.get("suburb") or addr.get("neighbourhood", "")
-                    cidade = addr.get("city") or addr.get("town") or addr.get("municipality") or ""
-                    uf = addr.get("state", "")
-                    partes = [p for p in [f"{rua}, {num}" if (rua and num) else rua, bairro, f"{cidade} - {uf}" if (cidade and uf) else cidade] if p]
-                    label = ", ".join(partes) or it.get("display_name", "")
-                    if label and it.get("lat") and it.get("lon"):
-                        add_item(label, it["lat"], it["lon"])
+            url_ph = f"https://komoot.io{q_enc}&limit=5&lat=-22.357&lon=-47.384"
+            req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for feat in data.get("features", []):
+                    props = feat.get("properties", {})
+                    if props.get("countrycode", "BR").upper() not in ["BR", ""]:
+                        continue
+                    coords = feat.get("geometry", {}).get("coordinates", [])
+                    rua = props.get("street") or props.get("name") or ""
+                    numero = props.get("housenumber") or ""
+                    bairro = props.get("district") or props.get("suburb") or ""
+                    cidade = props.get("city") or props.get("town") or props.get("municipality") or ""
+                    estado = props.get("state") or ""
+                    partes = [p for p in [f"{rua}, {numero}" if (rua and numero) else rua, bairro, f"{cidade} - {estado}" if (cidade and estado) else cidade] if p]
+                    label = ", ".join(partes) if partes else props.get("name", "")
+                    if label and len(coords) == 2:
+                        add_item(label, coords, coords)
         except Exception:
             pass
 
     return resultados[:6]
+
 
 def calcular_rota_osrm(coord1, coord2):
     try:
