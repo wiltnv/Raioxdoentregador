@@ -32,7 +32,7 @@ def load_state(user_key):
         try:
             res = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
             if res.data and len(res.data) > 0:
-                return migrate_data(res.data[0]["state_json"]), True
+                return migrate_data(res.data["state_json"]), True
         except Exception:
             pass
     if os.path.exists(DATA_FILE):
@@ -72,6 +72,7 @@ def buscar_enderecos_online(query):
             vistos.add(chave)
             resultados.append((label, {"lat": float(lat), "lon": float(lon), "label": label}))
 
+    # 1. ViaCEP (quando digitado CEP de 8 digitos)
     cep_digits = re.sub(r"\D", "", q_clean)
     if len(cep_digits) == 8:
         try:
@@ -84,34 +85,47 @@ def buscar_enderecos_online(query):
         except Exception:
             pass
 
+    # 2. ArcGIS Suggest + Geocode (Autocomplete estilo Google Maps para Araras/SP e Brasil)
     try:
-        params_arc = urllib.parse.urlencode({
-            "SingleLine": q_clean,
+        params_sug = urllib.parse.urlencode({
+            "text": q_clean,
             "f": "json",
             "countryCode": "BRA",
             "location": "-47.384,-22.357",
-            "maxLocations": 6,
-            "outFields": "Match_addr,PlaceName"
+            "maxSuggestions": 5
         })
-        url_arc = f"https://arcgis.com?{params_arc}"
-        req = urllib.request.Request(url_arc, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
+        url_sug = f"https://arcgis.com?{params_sug}"
+        req = urllib.request.Request(url_sug, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
         with urllib.request.urlopen(req, timeout=4) as resp:
-            data_arc = json.loads(resp.read().decode("utf-8"))
-            for cand in data_arc.get("candidates", []):
-                attrs = cand.get("attributes", {})
-                loc = cand.get("location", {})
-                place = attrs.get("PlaceName", "").strip()
-                addr = attrs.get("Match_addr", "").strip()
-                label = f"{place} — {addr}" if (place and place.lower() not in addr.lower()) else addr
-                if label and loc.get("y") and loc.get("x"):
-                    add_item(label, loc["y"], loc["x"])
+            sug_data = json.loads(resp.read().decode("utf-8"))
+            for sug in sug_data.get("suggestions", [])[:4]:
+                texto_sug = sug.get("text", "")
+                magic_key = sug.get("magicKey", "")
+                if not texto_sug or not magic_key:
+                    continue
+                params_geo = urllib.parse.urlencode({
+                    "SingleLine": texto_sug,
+                    "magicKey": magic_key,
+                    "f": "json",
+                    "maxLocations": 1
+                })
+                url_geo = f"https://arcgis.com?{params_geo}"
+                req_g = urllib.request.Request(url_geo, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
+                with urllib.request.urlopen(req_g, timeout=3) as resp_g:
+                    geo_data = json.loads(resp_g.read().decode("utf-8"))
+                    cands = geo_data.get("candidates", [])
+                    if cands:
+                        loc = cands.get("location", {})
+                        if loc.get("y") and loc.get("x"):
+                            add_item(texto_sug, loc["y"], loc["x"])
     except Exception:
         pass
 
-    if len(resultados) < 5:
+    # 3. Photon OpenStreetMap (garante cobertura total caso ArcGIS falhe)
+    if len(resultados) < 4:
         try:
             q_enc = urllib.parse.quote(q_clean)
-            url_ph = f"https://komoot.io{q_enc}&limit=5&lat=-22.357&lon=-47.384"
+            url_ph = f"https://komoot.io{q_enc}&limit=6&lat=-22.357&lon=-47.384"
             req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
             with urllib.request.urlopen(req, timeout=4) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -128,7 +142,7 @@ def buscar_enderecos_online(query):
                     partes = [p for p in [f"{rua}, {numero}" if (rua and numero) else rua, bairro, f"{cidade} - {estado}" if (cidade and estado) else cidade] if p]
                     label = ", ".join(partes) if partes else props.get("name", "")
                     if label and len(coords) == 2:
-                        add_item(label, coords[1], coords[0])
+                        add_item(label, coords, coords)
         except Exception:
             pass
 
@@ -136,16 +150,16 @@ def buscar_enderecos_online(query):
 
 def calcular_rota_osrm(coord1, coord2):
     try:
-        lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1[0]
-        lon1 = coord1["lon"] if isinstance(coord1, dict) else coord1[1]
-        lat2 = coord2["lat"] if isinstance(coord2, dict) else coord2[0]
-        lon2 = coord2["lon"] if isinstance(coord2, dict) else coord2[1]
+        lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1
+        lon1 = coord1["lon"] if isinstance(coord1, dict) else coord1
+        lat2 = coord2["lat"] if isinstance(coord2, dict) else coord2
+        lon2 = coord2["lon"] if isinstance(coord2, dict) else coord2
         url = f"http://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false"
         req = urllib.request.Request(url, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("code") == "Ok" and data.get("routes"):
-                r = data["routes"][0]
+                r = data["routes"]
                 return round(r["distance"] / 1000.0, 2), round(r["duration"] / 60.0)
     except Exception:
         pass
