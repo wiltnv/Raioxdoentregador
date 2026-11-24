@@ -180,12 +180,12 @@ with tab_hoje:
                 save_state(user_key, db)
                 st.rerun()
 with tab_sim:
-    modo_sim = st.radio("Modo:", ["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"], horizontal=True)
+    sub_app, sub_orc = st.tabs(["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"])
 
-    if modo_sim == "⚡ Simular Corrida de App":
+    with sub_app:
         col_s1, col_s2 = st.columns(2)
-        val_corrida = col_s1.number_input("Valor Ofertado (R$)", min_value=0.0, value=12.0, step=0.5)
-        dist_corrida = col_s2.number_input("Distância Total até Entrega (km)", min_value=0.1, value=6.0, step=0.5)
+        val_corrida = col_s1.number_input("Valor Ofertado (R$)", min_value=0.0, value=12.0, step=0.5, key="app_val")
+        dist_corrida = col_s2.number_input("Distância Total até Entrega (km)", min_value=0.1, value=6.0, step=0.5, key="app_dist")
 
         custo_c = dist_corrida * custo_total_km
         lucro_c = val_corrida - custo_c
@@ -203,12 +203,13 @@ with tab_sim:
         else:
             st.error("🚨 **FURADA / PREJUÍZO:** Abaixo do mínimo viável.")
 
-    else:
+    with sub_orc:
         st.subheader("Cálculo de Rota e Orçamento")
         modo_partida = st.radio(
             "Deslocamento até a retirada:",
             ["📍 Estou no local / Não cobrar deslocamento", "📡 Meu GPS Atual (HTTPS)", "🏍️ Digitar Rua onde estou"],
-            horizontal=True
+            horizontal=True,
+            key="orc_modo_partida"
         )
 
         def _ler_busca(res):
@@ -264,7 +265,7 @@ with tab_sim:
             if d_ent:
                 km_entrega_auto = d_ent
                 tempo_total_min += int(t_ent or 0)
-                st.caption(f"Rota Retirada ➔ Entrega: **{d_ent} km** (~{t_ent} min)")
+                st.success(f"🗺️ Rota Retirada ➔ Entrega: **{d_ent} km** (~{t_ent} min)")
             if coord_partida:
                 d_desl, t_desl = calcular_rota_osrm(coord_partida, coord_retirada)
                 if d_desl:
@@ -274,10 +275,10 @@ with tab_sim:
 
         col_o1, col_o2, col_o3 = st.columns(3)
         km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
-        valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=2.0, step=0.25)
-        taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=8.0, step=1.0)
+        valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=2.0, step=0.25, key="orc_val_km")
+        taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=8.0, step=1.0, key="orc_taxa_min")
 
-        cobrar_desloc = st.checkbox("Incluir km de deslocamento até retirada no preço ao cliente", value=False)
+        cobrar_desloc = st.checkbox("Incluir km de deslocamento até retirada no preço ao cliente", value=False, key="orc_chk_desl")
         km_cobrado = km_entrega + (km_desloc if cobrar_desloc else 0.0)
         km_rodado_real = km_entrega + km_desloc
 
@@ -308,7 +309,6 @@ with tab_sim:
         st.code(msg_whats, language="markdown")
         link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
-
         
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
