@@ -5,6 +5,8 @@ Raio-X do Entregador — Aplicativo Principal
 
 from datetime import datetime, date
 import streamlit as st
+from streamlit_searchbox import st_searchbox
+from streamlit_js_eval import get_geolocation
 
 from catalogo_motos import CATALOGO_MOTOS, ESTABELECIMENTOS_LISTA, criar_moto_do_catalogo
 from database_supabase import (
@@ -259,51 +261,47 @@ with aba1:
 with aba2:
     st.subheader("🗺️ Simulador de Corrida & Orçamento WhatsApp")
     cfg_orc = estado.get("orcamento_config", {"valor_km": 2.0, "taxa_minima": 8.0, "retorno_incluso": True})
-    cidade_atual = estado.get("cidade", "Araras")
-    uf_atual = estado.get("estado", "SP")
 
-    usar_ponto_atual = st.checkbox("📍 Incluir deslocamento de onde estou agora até a coleta", value=False)
-    sel_atual = None
-    if usar_ponto_atual:
-        txt_atual = st.text_input("Onde você está agora?", placeholder=f"Ex: Rua Joaquim, {cidade_atual}")
-        opcoes_atual = buscar_enderecos_autocomplete(txt_atual, cidade_atual, uf_atual) if len(txt_atual.strip()) >= 3 else []
-        if opcoes_atual:
-            sel_atual = st.selectbox("Confirmar Localização Atual", options=opcoes_atual, format_func=lambda x: x["label"], key="sel_loc_atual")
-        elif len(txt_atual.strip()) >= 3:
-            st.caption("Nenhum endereço encontrado. Tente incluir o nome da rua ou bairro.")
+    usar_gps = st.checkbox("📍 Usar minha localização atual (GPS) como ponto de partida", value=False)
+    gps_atual = None
+    if usar_gps:
+        loc_data = get_geolocation()
+        if loc_data and "coords" in loc_data:
+            lat_gps = float(loc_data["coords"]["latitude"])
+            lon_gps = float(loc_data["coords"]["longitude"])
+            label_gps = reverso_gps_nominatim(lat_gps, lon_gps)
+            gps_atual = {"label": label_gps, "lat": lat_gps, "lon": lon_gps}
+            st.success(f"Localização capturada: **{label_gps}**")
+        else:
+            st.info("Aguardando permissão de localização no navegador/celular...")
 
     col_o, col_d = st.columns(2)
     with col_o:
-        txt_origem = st.text_input("Endereço de Coleta / Origem", placeholder=f"Ex: Av. Dona Renata, {cidade_atual}", key="txt_origem_rota")
-        opcoes_o = buscar_enderecos_autocomplete(txt_origem, cidade_atual, uf_atual) if len(txt_origem.strip()) >= 3 else []
-        if opcoes_o:
-            sel_o = st.selectbox("Confirmar Origem", options=opcoes_o, format_func=lambda x: x["label"], key="sel_origem_rota")
-        else:
-            sel_o = None
-            if len(txt_origem.strip()) >= 3:
-                st.caption("Digite mais detalhes da rua para listar.")
-
+        st.markdown("**1. Endereço de Coleta / Origem**")
+        sel_o = st_searchbox(
+            buscar_nomes_searchbox,
+            placeholder="Digite rua, número ou local de coleta...",
+            key="sb_origem_entrega",
+        )
     with col_d:
-        txt_destino = st.text_input("Endereço de Entrega / Destino", placeholder=f"Ex: Parque Industrial, {cidade_atual}", key="txt_destino_rota")
-        opcoes_d = buscar_enderecos_autocomplete(txt_destino, cidade_atual, uf_atual) if len(txt_destino.strip()) >= 3 else []
-        if opcoes_d:
-            sel_d = st.selectbox("Confirmar Destino", options=opcoes_d, format_func=lambda x: x["label"], key="sel_destino_rota")
-        else:
-            sel_d = None
-            if len(txt_destino.strip()) >= 3:
-                st.caption("Digite mais detalhes da rua para listar.")
+        st.markdown("**2. Endereço de Entrega / Destino**")
+        sel_d = st_searchbox(
+            buscar_nomes_searchbox,
+            placeholder="Digite rua, número ou local de entrega...",
+            key="sb_destino_entrega",
+        )
 
     col_p1, col_p2, col_p3 = st.columns(3)
     valor_km_cobrado = col_p1.number_input("Cobrar por KM (R$)", min_value=0.5, value=float(cfg_orc.get("valor_km", 2.0)), step=0.1)
     taxa_min = col_p2.number_input("Taxa Mínima (R$)", min_value=0.0, value=float(cfg_orc.get("taxa_minima", 8.0)), step=1.0)
     retorno_inc = col_p3.checkbox("Incluir volta (Ida + Volta)", value=bool(cfg_orc.get("retorno_incluso", True)))
 
-    if sel_o and sel_d:
+    if isinstance(sel_o, dict) and isinstance(sel_d, dict):
         rota = calcular_rota_osrm(sel_o["lat"], sel_o["lon"], sel_d["lat"], sel_d["lon"])
         if rota:
             dist_desloc = 0.0
-            if sel_atual:
-                rota_desloc = calcular_rota_osrm(sel_atual["lat"], sel_atual["lon"], sel_o["lat"], sel_o["lon"])
+            if gps_atual:
+                rota_desloc = calcular_rota_osrm(gps_atual["lat"], gps_atual["lon"], sel_o["lat"], sel_o["lon"])
                 if rota_desloc:
                     dist_desloc = rota_desloc["distancia_km"]
 
@@ -314,10 +312,10 @@ with aba2:
             lucro_corrida = valor_calculado - custo_corrida
 
             r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Distância Considerada", f"{dist_total:.1f} km", f"Ida: {dist_ida:.1f} km")
+            r1.metric("Distância Total", f"{dist_total:.1f} km", f"Desloc: {dist_desloc:.1f} km | Ida: {dist_ida:.1f} km")
             r2.metric("Valor ao Cliente", f"R$ {valor_calculado:.2f}")
-            r3.metric("Seu Custo Operacional", f"R$ {custo_corrida:.2f}")
-            r4.metric("Seu Lucro Líquido", f"R$ {lucro_corrida:.2f}")
+            r3.metric("Custo Operacional", f"R$ {custo_corrida:.2f}")
+            r4.metric("Lucro Líquido", f"R$ {lucro_corrida:.2f}")
 
             msg_wpp, link_wpp = gerar_texto_whatsapp_rota(
                 origem_label=sel_o["label"],
@@ -328,10 +326,11 @@ with aba2:
                 retorno_incluso=retorno_inc,
                 dist_deslocamento_km=dist_desloc,
             )
-            st.link_button("📲 Abrir no WhatsApp com Orçamento Pronto", url=link_wpp, type="primary", use_container_width=True)
-            st.text_area("Ou copie o texto manualmente:", value=msg_wpp, height=150)
+            st.link_button("📲 Enviar Orçamento no WhatsApp", url=link_wpp, type="primary", use_container_width=True)
+            st.text_area("Texto do Orçamento:", value=msg_wpp, height=150)
         else:
-            st.warning("Não foi possível traçar a rota viária entre os dois pontos.")
+            st.warning("Não foi possível calcular a rota viária entre esses pontos.")
+
 with aba3:
     with st.expander(f"🔩 Plano de Manutenção Preventiva — {moto_atual['apelido']} ({len(pecas_avaliadas)} itens)", expanded=False):
         for idx, p in enumerate(pecas_avaliadas):
