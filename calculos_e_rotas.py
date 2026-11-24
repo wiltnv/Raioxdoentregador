@@ -89,8 +89,6 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
         "consumo_real": round(consumo, 1),
         "preco_combustivel_real": round(preco_comb, 2),
     }
-
-
 def avaliar_pecas(moto: dict) -> list:
     hodometro_atual = int(moto.get("hodometro", moto.get("hodometro_atual", 0)))
     lista_avaliada = []
@@ -145,16 +143,10 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
     resultados = []
     vistos = set()
 
-    # 1. Photon API (com bias geográfico em Araras/SP)
     try:
         resp = requests.get(
             "https://komoot.io",
-            params={
-                "q": f"{consulta} {cidade_padrao}",
-                "lat": -22.3572,
-                "lon": -47.3842,
-                "limit": 6,
-            },
+            params={"q": f"{consulta} {cidade_padrao}", "lat": -22.3572, "lon": -47.3842, "limit": 6},
             headers=HEADERS_HTTP,
             timeout=4,
         )
@@ -180,7 +172,6 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
     except Exception:
         pass
 
-    # 2. Nominatim OpenStreetMap Brasil
     if len(resultados) < 3:
         try:
             q_nom = (
@@ -190,13 +181,7 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
             )
             resp_nom = requests.get(
                 "https://openstreetmap.org",
-                params={
-                    "q": q_nom,
-                    "format": "json",
-                    "addressdetails": 1,
-                    "limit": 6,
-                    "countrycodes": "br",
-                },
+                params={"q": q_nom, "format": "json", "addressdetails": 1, "limit": 6, "countrycodes": "br"},
                 headers=HEADERS_HTTP,
                 timeout=5,
             )
@@ -221,160 +206,3 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
             pass
 
     return resultados
-
-
-def buscar_nomes_searchbox(termo: str, **kwargs) -> list[str]:
-    cidade = "Araras"
-    uf = "SP"
-    if "estado" in st.session_state and isinstance(st.session_state["estado"], dict):
-        cidade = st.session_state["estado"].get("cidade", "Araras")
-        uf = st.session_state["estado"].get("estado", "SP")
-    itens = buscar_enderecos_autocomplete(termo, cidade, uf)
-    return [item["label"] for item in itens]
-
-
-def reverso_gps_nominatim(lat: float, lon: float) -> str:
-    try:
-        resp = requests.get(
-            "https://openstreetmap.org",
-            params={"lat": lat, "lon": lon, "format": "json"},
-            headers=HEADERS_HTTP,
-            timeout=5,
-        )
-                if resp.status_code == 200:
-            for feat in resp.json().get("features", []):
-                props = feat.get("properties", {})
-                coords = feat.get("geometry", {}).get("coordinates", [])
-                if isinstance(coords, list) and len(coords) >= 2:
-                    lon_val = float(coords.pop(0))
-                    lat_val = float(coords.pop(0))
-                    rua = props.get("street") or props.get("name") or ""
-                    numero = props.get("housenumber") or ""
-                    bairro = props.get("district") or props.get("suburb") or ""
-                    cidade = props.get("city") or props.get("town") or cidade_padrao
-                    uf = props.get("state") or estado_padrao
-                    partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
-                    label = " - ".join(partes) if partes else consulta
-                    if label not in vistos:
-                        vistos.add(label)
-                        item = {"label": label, "lat": lat_val, "lon": lon_val}
-                        st.session_state["cache_enderecos"][label] = item
-                        resultados.append(item)
-    except Exception:
-        pass
-
-    # 2. Nominatim OpenStreetMap Brasil
-    if len(resultados) < 3:
-        try:
-            q_nom = (
-                f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil"
-                if cidade_padrao.lower() not in consulta.lower()
-                else f"{consulta}, Brasil"
-            )
-            resp_nom = requests.get(
-                "https://openstreetmap.org",
-                params={
-                    "q": q_nom,
-                    "format": "json",
-                    "addressdetails": 1,
-                    "limit": 6,
-                    "countrycodes": "br",
-                },
-                headers=HEADERS_HTTP,
-                timeout=5,
-            )
-            if resp_nom.status_code == 200:
-                for it in resp_nom.json():
-                    lat_val = float(it.get("lat", 0))
-                    lon_val = float(it.get("lon", 0))
-                    addr = it.get("address", {})
-                    rua = addr.get("road") or addr.get("pedestrian") or it.get("name") or ""
-                    numero = addr.get("house_number") or ""
-                    bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
-                    cidade = addr.get("city") or addr.get("town") or cidade_padrao
-                    uf = addr.get("state") or estado_padrao
-                    partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
-                    label = " - ".join(partes) if partes else it.get("display_name", consulta)
-                    if label not in vistos and lat_val != 0:
-                        vistos.add(label)
-                        item = {"label": label, "lat": lat_val, "lon": lon_val}
-                        st.session_state["cache_enderecos"][label] = item
-                        resultados.append(item)
-        except Exception:
-            pass
-
-    return resultados
-
-
-def buscar_nomes_searchbox(termo: str, **kwargs) -> list[str]:
-    cidade = "Araras"
-    uf = "SP"
-    if "estado" in st.session_state and isinstance(st.session_state["estado"], dict):
-        cidade = st.session_state["estado"].get("cidade", "Araras")
-        uf = st.session_state["estado"].get("estado", "SP")
-    itens = buscar_enderecos_autocomplete(termo, cidade, uf)
-    return [item["label"] for item in itens]
-
-
-def reverso_gps_nominatim(lat: float, lon: float) -> str:
-    try:
-        resp = requests.get(
-            "https://openstreetmap.org",
-            params={"lat": lat, "lon": lon, "format": "json"},
-            headers=HEADERS_HTTP,
-            timeout=5,
-        )
-        if resp.status_code == 200:
-            addr = resp.json().get("address", {})
-            rua = addr.get("road") or addr.get("pedestrian") or ""
-            numero = addr.get("house_number") or ""
-            bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
-            cidade = addr.get("city") or addr.get("town") or "Araras"
-            partes = [p for p in [f"{rua} {numero}".strip(), bairro, cidade] if p]
-            if partes:
-                return " - ".join(partes)
-    except Exception:
-        pass
-    return f"GPS ({lat:.5f}, {lon:.5f})"
-
-
-def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> dict | None:
-    try:
-        url = f"https://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false"
-        resp = requests.get(url, headers=HEADERS_HTTP, timeout=6)
-        if resp.status_code == 200:
-            dados = resp.json()
-            rotas = dados.get("routes", [])
-            if rotas:
-                primeira = rotas.pop(0)
-                dist_km = round(float(primeira["distance"]) / 1000.0, 2)
-                dur_min = max(int(round(float(primeira["duration"]) / 60.0)), 1)
-                return {"distancia_km": dist_km, "duracao_min": dur_min}
-    except Exception:
-        pass
-    return None
-
-
-def gerar_texto_whatsapp_rota(
-    origem_label: str,
-    destino_label: str,
-    dist_km: float,
-    tempo_min: int,
-    valor_cobrado: float,
-    retorno_incluso: bool = True,
-    dist_deslocamento_km: float = 0.0,
-) -> tuple[str, str]:
-    tipo_rota = "Ida e Volta" if retorno_incluso else "Somente Ida"
-    linha_desloc = f"🏍️ *Deslocamento até coleta:* {dist_deslocamento_km:.1f} km\n" if dist_deslocamento_km > 0 else ""
-    texto = (
-        f"*Orçamento de Entrega*\n"
-        f"{linha_desloc}"
-        f"📍 *Coleta:* {origem_label}\n"
-        f"🏁 *Entrega:* {destino_label}\n"
-        f"🛣️ *Distância:* {dist_km:.1f} km ({tipo_rota})\n"
-        f"⏱️ *Tempo estimado:* ~{tempo_min} min\n"
-        f"💰 *Valor da corrida:* R$ {valor_cobrado:.2f}"
-    )
-    link = f"https://whatsapp.com{urllib.parse.quote(texto)}"
-    return texto, link
-
