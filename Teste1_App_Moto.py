@@ -5,7 +5,6 @@ Raio-X do Entregador — Aplicativo Principal
 
 from datetime import datetime, date
 import streamlit as st
-import pandas as pd
 
 from catalogo_motos import CATALOGO_MOTOS, ESTABELECIMENTOS_LISTA, criar_moto_do_catalogo
 from database_supabase import (
@@ -73,23 +72,22 @@ moto_atual = motos[moto_ativa_id]
 
 with st.sidebar:
     st.header("🏍️ Garagem & Perfil")
-
     sb_client = get_supabase_client()
     if sb_client is None:
-        st.markdown('<span class="badge-err">⚠️ Supabase: Chaves ausentes em Secrets</span>', unsafe_allow_html=True)
+        st.markdown('<span class="badge-err">⚠️ Supabase: Chaves ausentes</span>', unsafe_allow_html=True)
     elif st.session_state.get("ultimo_save_ok") is False:
         st.markdown('<span class="badge-err">❌ Falha ao gravar no Supabase</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="badge-ok">✅ Supabase: Conectado</span>', unsafe_allow_html=True)
 
     st.divider()
-
     nomes_motos = {mid: f"{m['apelido']} ({m['hodometro']:,} km)" for mid, m in motos.items()}
     nova_selecao = st.selectbox(
         "Veículo Ativo",
         options=list(nomes_motos.keys()),
         index=list(nomes_motos.keys()).index(moto_ativa_id),
         format_func=lambda x: nomes_motos[x],
+        key="sb_seletor_moto",
     )
     if nova_selecao != moto_ativa_id:
         estado["moto_ativa_id"] = nova_selecao
@@ -98,49 +96,13 @@ with st.sidebar:
 
     st.divider()
     st.subheader("📍 Localidade (Observatório)")
-    cidade_in = st.text_input("Cidade", value=estado.get("cidade", "Araras"))
-    uf_in = st.text_input("UF", value=estado.get("estado", "SP"), max_chars=2)
-    if st.button("Salvar Localidade", use_container_width=True):
+    cidade_in = st.text_input("Cidade", value=estado.get("cidade", "Araras"), key="sb_cidade")
+    uf_in = st.text_input("UF", value=estado.get("estado", "SP"), max_chars=2, key="sb_uf")
+    if st.button("Salvar Localidade", use_container_width=True, key="sb_btn_loc"):
         estado["cidade"] = cidade_in.strip() or "Araras"
         estado["estado"] = uf_in.strip().upper() or "SP"
         if persistir_estado():
-            st.success("Localidade salva no banco!")
-
-    st.divider()
-    with st.expander("➕ Cadastrar Novo Veículo", expanded=False):
-        with st.form("form_nova_moto_sidebar", clear_on_submit=True):
-            novo_apelido = st.text_input("Apelido da Moto", placeholder="Ex: CG 160 Start Trabalho")
-            modelo_sel = st.selectbox("Perfil Base do Catálogo", options=list(CATALOGO_MOTOS.keys()))
-            hodometro_novo = st.number_input("Hodômetro Atual (km)", min_value=0, value=0, step=100)
-            tipo_posse_novo = st.radio("Posse do Veículo", ["Própria", "Alugada"], horizontal=True)
-            aluguel_semanal_novo = st.number_input("Aluguel Semanal (R$)", min_value=0.0, value=0.0, step=10.0)
-            km_franquia_novo = st.number_input("Franquia Semanal (km)", min_value=100, value=1000, step=100)
-            sub_moto = st.form_submit_button("💾 Salvar Novo Veículo", type="primary", use_container_width=True)
-
-            if sub_moto:
-                if not novo_apelido.strip():
-                    st.error("Informe um apelido para a moto.")
-                else:
-                    novo_id = f"moto_{int(datetime.now().timestamp())}"
-                    nova_moto = criar_moto_do_catalogo(
-                        moto_id=novo_id,
-                        apelido=novo_apelido.strip(),
-                        modelo_catalogo=modelo_sel,
-                        hodometro_inicial=int(hodometro_novo),
-                    )
-                    nova_moto["tipo"] = "alugada" if tipo_posse_novo == "Alugada" else "propria"
-                    nova_moto["aluguel_semanal"] = float(aluguel_semanal_novo)
-                    nova_moto["km_franquia_semanal"] = float(km_franquia_novo)
-
-                    estado["motos"][novo_id] = nova_moto
-                    estado["moto_ativa_id"] = novo_id
-                    if persistir_estado():
-                        st.success(f"Veículo '{novo_apelido}' salvo no Supabase!")
-                        st.rerun()
-                    else:
-                        st.error("Erro ao gravar no Supabase.")
-
-
+            st.success("Localidade salva!")
 custo_info = calcular_custo_km_detalhado(moto_atual, estado)
 custo_km_total = custo_info["custo_km_total"]
 pecas_avaliadas = avaliar_pecas(moto_atual)
@@ -155,6 +117,8 @@ total_bruto_ciclo = sum(float(t.get("bruto", 0)) for t in turnos_moto)
 total_horas_ciclo = sum(float(t.get("horas", 0)) for t in turnos_moto)
 custo_operacional_ciclo = total_km_ciclo * custo_km_total
 lucro_liquido_ciclo = total_bruto_ciclo - custo_operacional_ciclo
+
+
 @st.dialog("⏱️ Registrar Novo Turno")
 def modal_turno():
     with st.form("form_modal_turno"):
@@ -252,16 +216,15 @@ def modal_manutencao():
                 moto_atual["hodometro"] = int(km_m)
             persistir_estado()
             st.rerun()
-
-
 st.title("🏍️ Raio-X do Entregador")
 st.caption(
     f"Veículo ativo: **{moto_atual['apelido']}** ({moto_atual['modelo']}) • "
     f"Hodômetro: **{moto_atual['hodometro']:,} km** • Ciclo ativo desde **{DATA_INICIO_CICLO}**"
 )
 
-aba1, aba2, aba3 = st.tabs([
+aba1, aba2, aba3, aba4 = st.tabs([
     "📊 Painel & Ações",
+    "🗺️ Cotação & WhatsApp",
     f"🔧 Saúde da Moto ({len(alertas_criticos)} alertas)",
     "📑 Relatórios & CLT",
 ])
@@ -292,8 +255,8 @@ with aba1:
         c3.metric("Custos Fixos / km", f"R$ {custo_info['custo_fixo_km']:.3f}")
         c4.metric("Aluguel / km", f"R$ {custo_info['custo_aluguel_km']:.3f}")
 
-    st.divider()
 
+with aba2:
     st.subheader("🗺️ Simulador de Corrida & Orçamento WhatsApp")
     cfg_orc = estado.get("orcamento_config", {"valor_km": 2.0, "taxa_minima": 8.0, "retorno_incluso": True})
     cidade_atual = estado.get("cidade", "Araras")
@@ -302,33 +265,33 @@ with aba1:
     usar_ponto_atual = st.checkbox("📍 Incluir deslocamento de onde estou agora até a coleta", value=False)
     sel_atual = None
     if usar_ponto_atual:
-        txt_atual = st.text_input("Onde você está agora?", placeholder=f"Ex: Centro, {cidade_atual} {uf_atual}")
+        txt_atual = st.text_input("Onde você está agora?", placeholder=f"Ex: Rua Joaquim, {cidade_atual}")
         opcoes_atual = buscar_enderecos_autocomplete(txt_atual, cidade_atual, uf_atual) if len(txt_atual.strip()) >= 3 else []
         if opcoes_atual:
-            sel_atual = st.selectbox("Confirmar Localização Atual", options=opcoes_atual, format_func=lambda x: x["label"])
+            sel_atual = st.selectbox("Confirmar Localização Atual", options=opcoes_atual, format_func=lambda x: x["label"], key="sel_loc_atual")
         elif len(txt_atual.strip()) >= 3:
             st.caption("Nenhum endereço encontrado. Tente incluir o nome da rua ou bairro.")
 
     col_o, col_d = st.columns(2)
     with col_o:
-        txt_origem = st.text_input("Endereço de Coleta / Origem", placeholder=f"Ex: Av. Dona Renata, {cidade_atual}")
+        txt_origem = st.text_input("Endereço de Coleta / Origem", placeholder=f"Ex: Av. Dona Renata, {cidade_atual}", key="txt_origem_rota")
         opcoes_o = buscar_enderecos_autocomplete(txt_origem, cidade_atual, uf_atual) if len(txt_origem.strip()) >= 3 else []
         if opcoes_o:
-            sel_o = st.selectbox("Confirmar Origem", options=opcoes_o, format_func=lambda x: x["label"])
+            sel_o = st.selectbox("Confirmar Origem", options=opcoes_o, format_func=lambda x: x["label"], key="sel_origem_rota")
         else:
             sel_o = None
             if len(txt_origem.strip()) >= 3:
-                st.caption("Digite mais detalhes da rua para aparecer na lista.")
+                st.caption("Digite mais detalhes da rua para listar.")
 
     with col_d:
-        txt_destino = st.text_input("Endereço de Entrega / Destino", placeholder=f"Ex: Parque Industrial, {cidade_atual}")
+        txt_destino = st.text_input("Endereço de Entrega / Destino", placeholder=f"Ex: Parque Industrial, {cidade_atual}", key="txt_destino_rota")
         opcoes_d = buscar_enderecos_autocomplete(txt_destino, cidade_atual, uf_atual) if len(txt_destino.strip()) >= 3 else []
         if opcoes_d:
-            sel_d = st.selectbox("Confirmar Destino", options=opcoes_d, format_func=lambda x: x["label"])
+            sel_d = st.selectbox("Confirmar Destino", options=opcoes_d, format_func=lambda x: x["label"], key="sel_destino_rota")
         else:
             sel_d = None
             if len(txt_destino.strip()) >= 3:
-                st.caption("Digite mais detalhes da rua para aparecer na lista.")
+                st.caption("Digite mais detalhes da rua para listar.")
 
     col_p1, col_p2, col_p3 = st.columns(3)
     valor_km_cobrado = col_p1.number_input("Cobrar por KM (R$)", min_value=0.5, value=float(cfg_orc.get("valor_km", 2.0)), step=0.1)
@@ -349,6 +312,7 @@ with aba1:
             valor_calculado = max(taxa_min, dist_total * valor_km_cobrado)
             custo_corrida = dist_total * custo_km_total
             lucro_corrida = valor_calculado - custo_corrida
+
             r1, r2, r3, r4 = st.columns(4)
             r1.metric("Distância Considerada", f"{dist_total:.1f} km", f"Ida: {dist_ida:.1f} km")
             r2.metric("Valor ao Cliente", f"R$ {valor_calculado:.2f}")
@@ -368,40 +332,37 @@ with aba1:
             st.text_area("Ou copie o texto manualmente:", value=msg_wpp, height=150)
         else:
             st.warning("Não foi possível traçar a rota viária entre os dois pontos.")
-
-
-with aba2:
-    st.subheader(f"🔩 Plano de Manutenção Preventiva — {moto_atual['apelido']}")
-
-    for idx, p in enumerate(pecas_avaliadas):
-        cor_emoji = "🔴" if p["status"] == "VENCIDA" else ("🟡" if p["status"] == "ATENÇÃO" else "🟢")
-        with st.container(border=True):
-            c1, c2, c3, c4 = st.columns([3, 2, 1.2, 1.3])
-            c1.markdown(f"**{cor_emoji} {p['nome']}** — `{p['status']}`")
-            c1.caption(
-                f"Última troca: {p['ultima_km']:,} km • Próxima: {p['proxima_km']:,} km • "
-                f"Restam: **{p['km_restantes']:,} km**"
-            )
-            progresso = min(1.0, max(0.0, p["percentual_uso"] / 100.0))
-            c2.progress(progresso, text=f"{p['percentual_uso']:.0f}% da vida útil")
-            c3.metric("Reserva/km", f"R$ {p['custo_por_km']:.3f}")
-            if c4.button("✅ Troquei Hoje", key=f"btn_zerar_{moto_ativa_id}_{idx}", use_container_width=True):
-                hodo_atual = int(moto_atual["hodometro"])
-                moto_atual["pecas"][idx]["ultima_km"] = hodo_atual
-                estado["manutencoes"].append({
-                    "id": f"man_quick_{int(datetime.now().timestamp())}_{idx}",
-                    "data": date.today().strftime("%Y-%m-%d"),
-                    "moto_id": moto_ativa_id,
-                    "km": hodo_atual,
-                    "peca": p["nome"],
-                    "tipo": "Preventiva",
-                    "oficina": "Troca Rápida",
-                    "valor": float(p.get("custo", 0.0)),
-                    "obs": "Zerado pelo botão Troquei Hoje",
-                })
-                if persistir_estado():
-                    st.success(f"{p['nome']} zerado em {hodo_atual:,} km!")
-                    st.rerun()
+with aba3:
+    with st.expander(f"🔩 Plano de Manutenção Preventiva — {moto_atual['apelido']} ({len(pecas_avaliadas)} itens)", expanded=False):
+        for idx, p in enumerate(pecas_avaliadas):
+            cor_emoji = "🔴" if p["status"] == "VENCIDA" else ("🟡" if p["status"] == "ATENÇÃO" else "🟢")
+            with st.container(border=True):
+                c1, c2, c3, c4 = st.columns([3, 2, 1.2, 1.3])
+                c1.markdown(f"**{cor_emoji} {p['nome']}** — `{p['status']}`")
+                c1.caption(
+                    f"Última troca: {p['ultima_km']:,} km • Próxima: {p['proxima_km']:,} km • "
+                    f"Restam: **{p['km_restantes']:,} km**"
+                )
+                progresso = min(1.0, max(0.0, p["percentual_uso"] / 100.0))
+                c2.progress(progresso, text=f"{p['percentual_uso']:.0f}% da vida útil")
+                c3.metric("Reserva/km", f"R$ {p['custo_por_km']:.3f}")
+                if c4.button("✅ Troquei Hoje", key=f"btn_zerar_{moto_ativa_id}_{idx}", use_container_width=True):
+                    hodo_atual = int(moto_atual["hodometro"])
+                    moto_atual["pecas"][idx]["ultima_km"] = hodo_atual
+                    estado["manutencoes"].append({
+                        "id": f"man_quick_{int(datetime.now().timestamp())}_{idx}",
+                        "data": date.today().strftime("%Y-%m-%d"),
+                        "moto_id": moto_ativa_id,
+                        "km": hodo_atual,
+                        "peca": p["nome"],
+                        "tipo": "Preventiva",
+                        "oficina": "Troca Rápida",
+                        "valor": float(p.get("custo", 0.0)),
+                        "obs": "Zerado pelo botão Troquei Hoje",
+                    })
+                    if persistir_estado():
+                        st.success(f"{p['nome']} zerado em {hodo_atual:,} km!")
+                        st.rerun()
 
     with st.expander("➕ Adicionar Nova Peça / Item de Desgaste", expanded=False):
         with st.form("form_nova_peca", clear_on_submit=True):
@@ -424,7 +385,6 @@ with aba2:
                         st.success(f"Peça '{nome_nova_peca}' adicionada!")
                         st.rerun()
 
-    st.divider()
     with st.expander("⚙️ Editar Parâmetros de Consumo e Custos Fixos desta Moto", expanded=False):
         with st.form("form_config_moto"):
             col1, col2, col3 = st.columns(3)
@@ -448,8 +408,54 @@ with aba2:
                     st.success("Configurações atualizadas e salvas!")
                     st.rerun()
 
+    st.divider()
+    st.subheader("🏍️ Garagem & Cadastro de Novo Veículo")
+    nomes_motos_aba = {mid: f"{m['apelido']} ({m['hodometro']:,} km)" for mid, m in motos.items()}
+    sel_moto_aba = st.selectbox(
+        "Trocar Veículo Ativo",
+        options=list(nomes_motos_aba.keys()),
+        index=list(nomes_motos_aba.keys()).index(moto_ativa_id),
+        format_func=lambda x: nomes_motos_aba[x],
+        key="aba3_seletor_moto",
+    )
+    if sel_moto_aba != moto_ativa_id:
+        estado["moto_ativa_id"] = sel_moto_aba
+        persistir_estado()
+        st.rerun()
 
-with aba3:
+    with st.expander("➕ Cadastrar Novo Veículo", expanded=False):
+        with st.form("form_nova_moto_aba3", clear_on_submit=True):
+            novo_apelido = st.text_input("Apelido da Moto", placeholder="Ex: CG 160 Start Trabalho")
+            modelo_sel = st.selectbox("Perfil Base do Catálogo", options=list(CATALOGO_MOTOS.keys()))
+            hodometro_novo = st.number_input("Hodômetro Atual (km)", min_value=0, value=0, step=100)
+            tipo_posse_novo = st.radio("Posse do Veículo", ["Própria", "Alugada"], horizontal=True)
+            aluguel_semanal_novo = st.number_input("Aluguel Semanal (R$)", min_value=0.0, value=0.0, step=10.0)
+            km_franquia_novo = st.number_input("Franquia Semanal (km)", min_value=100, value=1000, step=100)
+            sub_moto = st.form_submit_button("💾 Salvar Novo Veículo", type="primary", use_container_width=True)
+
+            if sub_moto:
+                if not novo_apelido.strip():
+                    st.error("Informe um apelido para a moto.")
+                else:
+                    novo_id = f"moto_{int(datetime.now().timestamp())}"
+                    nova_moto = criar_moto_do_catalogo(
+                        moto_id=novo_id,
+                        apelido=novo_apelido.strip(),
+                        modelo_catalogo=modelo_sel,
+                        hodometro_inicial=int(hodometro_novo),
+                    )
+                    nova_moto["tipo"] = "alugada" if tipo_posse_novo == "Alugada" else "propria"
+                    nova_moto["aluguel_semanal"] = float(aluguel_semanal_novo)
+                    nova_moto["km_franquia_semanal"] = float(km_franquia_novo)
+
+                    estado["motos"][novo_id] = nova_moto
+                    estado["moto_ativa_id"] = novo_id
+                    if persistir_estado():
+                        st.success(f"Veículo '{novo_apelido}' salvo no Supabase!")
+                        st.rerun()
+
+
+with aba4:
     st.subheader("⚖️ Comparativo Equivalência CLT 2026 (Piso + 30% Periculosidade)")
     dias_trabalhados = len({t["data"] for t in turnos_moto})
     meta_clt_periodo = dias_trabalhados * PISO_DIARIO_CLT_2026
@@ -473,22 +479,13 @@ with aba3:
     st.divider()
     st.subheader("📋 Histórico de Turnos do Ciclo")
     if turnos_moto:
-        dados_turnos = []
         for t in reversed(turnos_moto):
-            km_r = float(t["km_rodado"])
-            bruto_v = float(t["bruto"])
-            custo_v = km_r * custo_km_total
-            liq_v = bruto_v - custo_v
-            dados_turnos.append({
-                "Data": t["data"],
-                "Estabelecimento": t.get("estabelecimento", "-"),
-                "KM": round(km_r, 1),
-                "Horas": float(t["horas"]),
-                "Bruto (R$)": round(bruto_v, 2),
-                "Custo (R$)": round(custo_v, 2),
-                "Líquido (R$)": round(liq_v, 2),
-            })
-        st.dataframe(pd.DataFrame(dados_turnos), use_container_width=True, hide_index=True)
+            liq_t = float(t["bruto"]) - (float(t["km_rodado"]) * custo_km_total)
+            st.markdown(
+                f"- **{t['data']}** | {t['estabelecimento']} | "
+                f"`{t['km_rodado']:.0f} km` ({t['horas']}h) | "
+                f"Bruto: **R$ {t['bruto']:.2f}** → Líquido: **R$ {liq_t:.2f}**"
+            )
     else:
         st.info("Nenhum turno registrado neste ciclo para esta moto.")
 
@@ -496,16 +493,10 @@ with aba3:
     st.subheader("🛠️ Histórico Completo de Manutenções")
     manut_moto = [m for m in estado.get("manutencoes", []) if m.get("moto_id") == moto_ativa_id]
     if manut_moto:
-        dados_manut = []
         for m in reversed(manut_moto):
-            dados_manut.append({
-                "Data": m["data"],
-                "KM": int(m["km"]),
-                "Peça / Serviço": m["peca"],
-                "Tipo": m.get("tipo", "Preventiva"),
-                "Oficina": m.get("oficina", "-"),
-                "Valor (R$)": round(float(m["valor"]), 2),
-            })
-        st.dataframe(pd.DataFrame(dados_manut), use_container_width=True, hide_index=True)
+            st.markdown(
+                f"- **{m['data']}** (`{m['km']:,} km`) | **{m['peca']}** ({m['tipo']}) | "
+                f"Oficina: {m.get('oficina', '-')} | **R$ {m['valor']:.2f}**"
+            )
     else:
         st.info("Nenhuma manutenção registrada para este veículo.")
