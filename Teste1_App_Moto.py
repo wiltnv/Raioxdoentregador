@@ -656,30 +656,17 @@ with tab_sim:
         txt_ret = f"{label_retirada} (Nº {num_ret})".strip() if (label_retirada and num_ret) else (label_retirada or num_ret or "Ponto de Coleta")
         txt_ent = f"{label_entrega} (Nº {num_ent})".strip() if (label_entrega and num_ent) else (label_entrega or num_ent or "Destino")
 
-        modelo_msg = st.radio(
-            "Formato da mensagem para o cliente:",
-            ["📋 Completa (com detalhes do percurso e tempo)", "⚡ Resumida"],
-            horizontal=True
-        )
+        detalhe_km = f" (inclui {km_desloc:.1f} km deslocamento + {km_entrega:.1f} km entrega)" if (cobrar_desloc and km_desloc > 0) else ""
+        detalhe_tempo = f" (aprox. {tempo_total_min} min)" if tempo_total_min > 0 else ""
 
-        if modelo_msg.startswith("📋"):
-            detalhe_km = f" (inclui {km_desloc:.1f} km deslocamento + {km_entrega:.1f} km entrega)" if (cobrar_desloc and km_desloc > 0) else ""
-            detalhe_tempo = f" (aprox. {tempo_total_min} min)" if tempo_total_min > 0 else ""
-            msg_whats = "\n".join([
-                "Olá! Segue o orçamento da entrega de moto:",
-                f"📍 *Retirada:* {txt_ret}",
-                f"🏁 *Entrega:* {txt_ent}",
-                f"📏 *Percurso:* {km_cobrado:.1f} km{detalhe_km}{detalhe_tempo}",
-                f"💰 *Valor da entrega:* R$ {preco_cliente:.2f}"
-            ])
-        else:
-            msg_whats = "\n".join([
-                "🏍️ *ORÇAMENTO DE ENTREGA*",
-                f"📍 *Retirada:* {txt_ret}",
-                f"🏁 *Entrega:* {txt_ent}",
-                f"📏 *Distância:* {km_cobrado:.1f} km",
-                f"💰 *Valor Total:* R$ {preco_cliente:.2f}"
-            ])
+        msg_whats = "\n".join([
+            "Olá! Segue o orçamento da entrega de moto:",
+            f"📍 *Retirada:* {txt_ret}",
+            f"🏁 *Entrega:* {txt_ent}",
+            f"📏 *Percurso:* {km_cobrado:.1f} km{detalhe_km}{detalhe_tempo}",
+            f"💰 *Valor da entrega:* R$ {preco_cliente:.2f}",
+            "⚠️ *Obs.:* Eventuais pedágios no trajeto não estão inclusos no valor acima."
+        ])
 
         st.caption("Toque no ícone no canto superior direito da caixa abaixo para copiar tudo com 1 clique:")
         st.code(msg_whats, language="markdown")
