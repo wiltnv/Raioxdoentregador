@@ -206,3 +206,74 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
             pass
 
     return resultados
+def buscar_nomes_searchbox(termo: str, **kwargs) -> list[str]:
+    cidade = "Araras"
+    uf = "SP"
+    if "estado" in st.session_state and isinstance(st.session_state["estado"], dict):
+        cidade = st.session_state["estado"].get("cidade", "Araras")
+        uf = st.session_state["estado"].get("estado", "SP")
+    itens = buscar_enderecos_autocomplete(termo, cidade, uf)
+    return [item["label"] for item in itens]
+
+
+def reverso_gps_nominatim(lat: float, lon: float) -> str:
+    try:
+        resp = requests.get(
+            "https://openstreetmap.org",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers=HEADERS_HTTP,
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            addr = resp.json().get("address", {})
+            rua = addr.get("road") or addr.get("pedestrian") or ""
+            numero = addr.get("house_number") or ""
+            bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
+            cidade = addr.get("city") or addr.get("town") or "Araras"
+            partes = [p for p in [f"{rua} {numero}".strip(), bairro, cidade] if p]
+            if partes:
+                return " - ".join(partes)
+    except Exception:
+        pass
+    return f"GPS ({lat:.5f}, {lon:.5f})"
+
+
+def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> dict | None:
+    try:
+        url = f"https://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false"
+        resp = requests.get(url, headers=HEADERS_HTTP, timeout=6)
+        if resp.status_code == 200:
+            dados = resp.json()
+            rotas = dados.get("routes", [])
+            if rotas:
+                primeira = rotas.pop(0)
+                dist_km = round(float(primeira["distance"]) / 1000.0, 2)
+                dur_min = max(int(round(float(primeira["duration"]) / 60.0)), 1)
+                return {"distancia_km": dist_km, "duracao_min": dur_min}
+    except Exception:
+        pass
+    return None
+
+
+def gerar_texto_whatsapp_rota(
+    origem_label: str,
+    destino_label: str,
+    dist_km: float,
+    tempo_min: int,
+    valor_cobrado: float,
+    retorno_incluso: bool = True,
+    dist_deslocamento_km: float = 0.0,
+) -> tuple[str, str]:
+    tipo_rota = "Ida e Volta" if retorno_incluso else "Somente Ida"
+    linha_desloc = f"🏍️ *Deslocamento até coleta:* {dist_deslocamento_km:.1f} km\n" if dist_deslocamento_km > 0 else ""
+    texto = (
+        f"*Orçamento de Entrega*\n"
+        f"{linha_desloc}"
+        f"📍 *Coleta:* {origem_label}\n"
+        f"🏁 *Entrega:* {destino_label}\n"
+        f"🛣️ *Distância:* {dist_km:.1f} km ({tipo_rota})\n"
+        f"⏱️ *Tempo estimado:* ~{tempo_min} min\n"
+        f"💰 *Valor da corrida:* R$ {valor_cobrado:.2f}"
+    )
+    link = f"https://whatsapp.com{urllib.parse.quote(texto)}"
+    return texto, link
