@@ -621,16 +621,19 @@ with tab_sim:
 
         km_desloc = 0.0
         km_entrega_auto = 6.0
+        tempo_total_min = 0
         if coord_retirada and coord_entrega:
             d_ent, t_ent = calcular_rota_osrm(coord_retirada, coord_entrega)
             if d_ent:
                 km_entrega_auto = d_ent
+                tempo_total_min += int(t_ent or 0)
                 st.caption(f"Rota Retirada ➔ Entrega: **{d_ent} km** (~{t_ent} min)")
             if coord_partida:
-                d_desl, _ = calcular_rota_osrm(coord_partida, coord_retirada)
+                d_desl, t_desl = calcular_rota_osrm(coord_partida, coord_retirada)
                 if d_desl:
                     km_desloc = d_desl
-                    st.caption(f"Deslocamento até Retirada: **{d_desl} km**")
+                    tempo_total_min += int(t_desl or 0)
+                    st.caption(f"Deslocamento até Retirada: **{d_desl} km** (~{t_desl} min)")
 
         col_o1, col_o2, col_o3 = st.columns(3)
         km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5)
@@ -652,16 +655,37 @@ with tab_sim:
 
         txt_ret = f"{label_retirada} (Nº {num_ret})".strip() if (label_retirada and num_ret) else (label_retirada or num_ret or "Ponto de Coleta")
         txt_ent = f"{label_entrega} (Nº {num_ent})".strip() if (label_entrega and num_ent) else (label_entrega or num_ent or "Destino")
-        msg_whats = "\n".join([
-            "🏍️ *ORÇAMENTO DE ENTREGA*",
-            f"📍 *Retirada:* {txt_ret}",
-            f"🏁 *Entrega:* {txt_ent}",
-            f"📏 *Distância:* {km_cobrado:.1f} km",
-            f"💰 *Valor Total:* R$ {preco_cliente:.2f}"
-        ])
-        link_whats = f"https://wa.me/?text={urllib.parse.quote(msg_whats)}"
+
+        modelo_msg = st.radio(
+            "Formato da mensagem para o cliente:",
+            ["📋 Completa (com detalhes do percurso e tempo)", "⚡ Resumida"],
+            horizontal=True
+        )
+
+        if modelo_msg.startswith("📋"):
+            detalhe_km = f" (inclui {km_desloc:.1f} km deslocamento + {km_entrega:.1f} km entrega)" if (cobrar_desloc and km_desloc > 0) else ""
+            detalhe_tempo = f" (aprox. {tempo_total_min} min)" if tempo_total_min > 0 else ""
+            msg_whats = "\n".join([
+                "Olá! Segue o orçamento da entrega de moto:",
+                f"📍 *Retirada:* {txt_ret}",
+                f"🏁 *Entrega:* {txt_ent}",
+                f"📏 *Percurso:* {km_cobrado:.1f} km{detalhe_km}{detalhe_tempo}",
+                f"💰 *Valor da entrega:* R$ {preco_cliente:.2f}"
+            ])
+        else:
+            msg_whats = "\n".join([
+                "🏍️ *ORÇAMENTO DE ENTREGA*",
+                f"📍 *Retirada:* {txt_ret}",
+                f"🏁 *Entrega:* {txt_ent}",
+                f"📏 *Distância:* {km_cobrado:.1f} km",
+                f"💰 *Valor Total:* R$ {preco_cliente:.2f}"
+            ])
+
+        st.caption("Toque no ícone no canto superior direito da caixa abaixo para copiar tudo com 1 clique:")
+        st.code(msg_whats, language="markdown")
+        link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
-        st.text_area("Ou copie a mensagem manualmente:", value=msg_whats, height=135)
+
 
 with tab_garagem:
     sub_pecas, sub_manut, sub_abast, sub_config = st.tabs([
