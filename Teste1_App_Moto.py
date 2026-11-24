@@ -283,7 +283,16 @@ with aba2:
         sel_o = st_searchbox(
             buscar_nomes_searchbox,
             placeholder="Digite rua, número ou local de coleta...",
+            debounce=400,
             key="sb_origem_entrega",
+        )
+    with col_d:
+        st.markdown("**2. Endereço de Entrega / Destino**")
+        sel_d = st_searchbox(
+            buscar_nomes_searchbox,
+            placeholder="Digite rua, número ou local de entrega...",
+            debounce=400,
+            key="sb_destino_entrega",
         )
     with col_d:
         st.markdown("**2. Endereço de Entrega / Destino**")
