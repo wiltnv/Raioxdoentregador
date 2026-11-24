@@ -24,6 +24,8 @@ from calculos_e_rotas import (
     calcular_custo_km_detalhado,
     avaliar_pecas,
     buscar_enderecos_autocomplete,
+    buscar_nomes_searchbox,
+    reverso_gps_nominatim,
     calcular_rota_osrm,
     gerar_texto_whatsapp_rota,
 )
