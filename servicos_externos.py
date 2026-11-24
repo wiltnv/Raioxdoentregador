@@ -143,7 +143,6 @@ def buscar_enderecos_online(query):
     st.session_state["debug_busca"] = " | ".join(erros) if erros else f"OK ({len(resultados)} itens para '{q_clean}')"
     return resultados[:6]
 
-
 def calcular_rota_osrm(coord1, coord2):
     try:
         lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1
