@@ -124,6 +124,7 @@ def avaliar_pecas(moto: dict) -> list:
             "km_rodados": km_rodado,
             "km_restante": km_restante,
             "km_restantes": km_restante,
+            "percentual_uso": pct_desgaste,
             "pct_desgaste": pct_desgaste,
             "pct_saude": pct_saude,
             "status": status,
