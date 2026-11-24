@@ -7,33 +7,27 @@ Raio-X do Entregador
 import urllib.parse
 import requests
 
-SALARIO_BASE_SP_2026 = 1850.00
+SALARIO_BASE_SP_2026 = 1621.00
 PERICULOSIDADE_PCT = 0.30
-SALARIO_COM_PERICULOSIDADE = 2405.00
-FERIAS_TERCO_MENSAL = 267.22
-DECIMO_TERCEIRO_MENSAL = 200.42
-FGTS_MENSAL = 192.40
-VALE_ALIMENTACAO_MENSAL = 200.00
+SALARIO_COM_PERICULOSIDADE = 2107.30
+FERIAS_TERCO_MENSAL = 234.14
+DECIMO_TERCEIRO_MENSAL = 175.61
+FGTS_MENSAL = 201.36
+INSS_MEI_MENSAL = 86.05
+VALE_ALIMENTACAO_MENSAL = 450.00
 DIAS_UTEIS_MES = 26
-HORAS_DIA_CLT = 8.0
+HORAS_DIA_CLT = 176.0 / 26.0
 PISO_DIARIO_CLT_2026 = 125.17
-PISO_HORA_CLT_2026 = 15.65
+PISO_HORA_CLT_2026 = 18.49
 
 
 def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> dict:
     moto_id = moto.get("id", "moto_bros_2008")
-    preco_comb = float(moto.get("preco_combustivel", 6.19))
-    consumo = max(float(moto.get("consumo_km_l", 35.0)), 1.0)
+    preco_comb = float(moto.get("preco_gasolina", moto.get("preco_combustivel", 5.99)))
+    consumo = max(float(moto.get("consumo_kml", moto.get("consumo_km_l", 29.0))), 1.0)
+    projecao_anual = max(float(moto.get("projecao_anual_km", 37286.64)), 1000.0)
 
     if isinstance(contexto, dict):
-        turnos = contexto.get("turnos", [])
-        km_total = sum(float(t.get("km_rodado", 0.0)) for t in turnos)
-        dias = len({t.get("data") for t in turnos if t.get("data")})
-        if dias > 0 and km_total > 0:
-            km_mes = max((km_total / dias) * DIAS_UTEIS_MES, 1000.0)
-        else:
-            km_mes = 2500.0
-
         abast_moto = [
             a for a in contexto.get("abastecimentos", [])
             if a.get("moto_id", moto_id) == moto_id
@@ -52,32 +46,33 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
                 )
                 if delta_km > 0 and litros_apos_primeiro > 0:
                     consumo = delta_km / litros_apos_primeiro
-    else:
-        km_mes = max(float(contexto), 500.0)
 
     custo_combustivel_km = preco_comb / consumo
 
     custo_pecas_km = 0.0
     for peca in moto.get("pecas", []):
         custo_troca = float(peca.get("custo", 0.0))
-        vida_util = max(float(peca.get("vida_util", 1000.0)), 100.0)
-        custo_pecas_km += custo_troca / vida_util
+        intervalo = max(float(peca.get("intervalo", peca.get("vida_util", 1000.0))), 100.0)
+        custo_pecas_km += custo_troca / intervalo
 
-    seguro_mensal = float(moto.get("seguro_mensal", 0.0))
-    ipva_anual = float(moto.get("ipva_anual", 0.0))
-    custo_fixo_base_mensal = seguro_mensal + (ipva_anual / 12.0)
-    custo_fixo_km = custo_fixo_base_mensal / km_mes
+    seguro_anual = float(moto.get("seguro_anual", 0.0))
+    licenciamento_anual = float(moto.get("licenciamento_anual", 0.0))
+    if seguro_anual == 0.0 and float(moto.get("seguro_mensal", 0.0)) > 0.0:
+        seguro_anual = float(moto.get("seguro_mensal", 0.0)) * 12.0
+    if licenciamento_anual == 0.0 and float(moto.get("ipva_anual", 0.0)) > 0.0:
+        licenciamento_anual = float(moto.get("ipva_anual", 0.0))
 
-    tipo_posse = moto.get("tipo_posse", "Própria")
-    if tipo_posse == "Alugada":
-        aluguel_semanal = float(moto.get("aluguel_semanal", 0.0))
-        custo_aluguel_mensal = aluguel_semanal * 4.33
-        custo_aluguel_km = custo_aluguel_mensal / km_mes
+    custo_fixo_anual = seguro_anual + licenciamento_anual
+    custo_fixo_km = custo_fixo_anual / projecao_anual
+
+    tipo = str(moto.get("tipo", moto.get("tipo_posse", "propria"))).lower()
+    aluguel_semanal = float(moto.get("aluguel_semanal", 0.0))
+    if tipo == "alugada" or aluguel_semanal > 0.0:
+        km_semanal = projecao_anual / 52.0
+        custo_aluguel_km = aluguel_semanal / max(km_semanal, 100.0)
     else:
-        custo_aluguel_mensal = 0.0
         custo_aluguel_km = 0.0
 
-    custo_fixo_mensal = custo_fixo_base_mensal + custo_aluguel_mensal
     custo_total_km = custo_combustivel_km + custo_pecas_km + custo_fixo_km + custo_aluguel_km
 
     return {
@@ -95,20 +90,19 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
         "total_km": round(custo_total_km, 4),
         "consumo_real": round(consumo, 1),
         "preco_combustivel_real": round(preco_comb, 2),
-        "custo_fixo_mensal": round(custo_fixo_mensal, 2),
-        "km_mes_estimado": round(km_mes, 1),
     }
 
 
 def avaliar_pecas(moto: dict) -> list:
-    hodometro_atual = int(moto.get("hodometro_atual", 0))
+    hodometro_atual = int(moto.get("hodometro", moto.get("hodometro_atual", 0)))
     lista_avaliada = []
     for peca in moto.get("pecas", []):
         ultima_km = int(peca.get("ultima_km", 0))
-        vida_util = max(int(peca.get("vida_util", 1000)), 1)
+        intervalo = max(int(peca.get("intervalo", peca.get("vida_util", 1000))), 1)
+        proxima_km = ultima_km + intervalo
         km_rodado = max(hodometro_atual - ultima_km, 0)
-        km_restante = vida_util - km_rodado
-        pct_desgaste = min(round((km_rodado / vida_util) * 100.0, 1), 150.0)
+        km_restante = proxima_km - hodometro_atual
+        pct_desgaste = min(round((km_rodado / intervalo) * 100.0, 1), 150.0)
         pct_saude = max(round(100.0 - pct_desgaste, 1), 0.0)
 
         if km_restante <= 0:
@@ -123,6 +117,9 @@ def avaliar_pecas(moto: dict) -> list:
 
         item = dict(peca)
         item.update({
+            "ultima_km": ultima_km,
+            "intervalo": intervalo,
+            "proxima_km": proxima_km,
             "km_rodado": km_rodado,
             "km_restante": km_restante,
             "pct_desgaste": pct_desgaste,
