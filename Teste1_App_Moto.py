@@ -307,10 +307,15 @@ with tab_sim:
 
         st.caption("Toque no ícone no canto superior direito da caixa abaixo para copiar tudo com 1 clique:")
         st.code(msg_whats, language="markdown")
-        link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
-        st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
-
-        
+        link_whats = "https://whatsapp.com" + "/send?text=" + urllib.parse.quote(msg_whats)
+        st.markdown(
+            f'<a href="{link_whats}" target="_blank" rel="noopener noreferrer" '
+            f'style="display:block;text-align:center;background-color:#25D366;color:#ffffff;'
+            f'padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:8px;">'
+            f'📲 Enviar Orçamento no WhatsApp</a>',
+            unsafe_allow_html=True
+        )
+      
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
 
