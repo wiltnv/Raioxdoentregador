@@ -349,7 +349,7 @@ with aba1:
             valor_calculado = max(taxa_min, dist_total * valor_km_cobrado)
             custo_corrida = dist_total * custo_km_total
             lucro_corrida = valor_calculado - custo_corrida
-                        r1, r2, r3, r4 = st.columns(4)
+            r1, r2, r3, r4 = st.columns(4)
             r1.metric("Distância Considerada", f"{dist_total:.1f} km", f"Ida: {dist_ida:.1f} km")
             r2.metric("Valor ao Cliente", f"R$ {valor_calculado:.2f}")
             r3.metric("Seu Custo Operacional", f"R$ {custo_corrida:.2f}")
