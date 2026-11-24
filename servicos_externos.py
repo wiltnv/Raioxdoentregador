@@ -4,6 +4,7 @@ import os
 import re
 import urllib.request
 import urllib.parse
+import math
 from calculos_moto import get_default_data, migrate_data
 
 try:
@@ -131,18 +132,30 @@ def buscar_enderecos_online(query):
     return resultados[:6]
 
 def calcular_rota_osrm(coord1, coord2):
-    try:
-        lat1 = coord1["lat"] if isinstance(coord1, dict) else coord1
-        lon1 = coord1["lon"] if isinstance(coord1, dict) else coord1
-        lat2 = coord2["lat"] if isinstance(coord2, dict) else coord2
-        lon2 = coord2["lon"] if isinstance(coord2, dict) else coord2
-        url = f"http://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            rota = next(iter(data.get("routes") or []), None)
-            if data.get("code") == "Ok" and rota:
-                return round(rota["distance"] / 1000.0, 2), round(rota["duration"] / 60.0)
-    except Exception:
-        pass
-    return None, None
+    lat1 = float(coord1["lat"] if isinstance(coord1, dict) else coord1)
+    lon1 = float(coord1["lon"] if isinstance(coord1, dict) else coord1)
+    lat2 = float(coord2["lat"] if isinstance(coord2, dict) else coord2)
+    lon2 = float(coord2["lon"] if isinstance(coord2, dict) else coord2)
+
+    urls = [
+        f"https://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false",
+        f"https://openstreetmap.de{lon1},{lat1};{lon2},{lat2}?overview=false"
+    ]
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                rota = next(iter(data.get("routes") or []), None)
+                if data.get("code") == "Ok" and rota:
+                    return round(rota["distance"] / 1000.0, 2), max(1, round(rota["duration"] / 60.0))
+        except Exception:
+            continue
+
+    r_terra = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    dist_est = round(2 * r_terra * math.asin(math.sqrt(a)) * 1.32, 2)
+    tempo_est = max(2, round((dist_est / 35.0) * 60))
+    return dist_est, tempo_est
