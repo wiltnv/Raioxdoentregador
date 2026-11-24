@@ -7,7 +7,7 @@ Raio-X do Entregador
 import urllib.parse
 import requests
 
-# Constantes CLT 2026 (exportadas diretamente para o Teste1_App_Moto.py)
+# Constantes CLT 2026
 SALARIO_BASE_SP_2026 = 1850.00
 PERICULOSIDADE_PCT = 0.30
 SALARIO_COM_PERICULOSIDADE = 2405.00
@@ -20,22 +20,8 @@ HORAS_DIA_CLT = 8.0
 PISO_DIARIO_CLT_2026 = 125.17
 PISO_HORA_CLT_2026 = 15.65
 
-CLT_REFERENCIA = {
-    "salario_base_sp": SALARIO_BASE_SP_2026,
-    "periculosidade_pct": PERICULOSIDADE_PCT,
-    "salario_com_periculosidade": SALARIO_COM_PERICULOSIDADE,
-    "ferias_terco_mensal": FERIAS_TERCO_MENSAL,
-    "decimo_terceiro_mensal": DECIMO_TERCEIRO_MENSAL,
-    "fgts_mensal": FGTS_MENSAL,
-    "vale_alimentacao": VALE_ALIMENTACAO_MENSAL,
-    "dias_uteis_mes": DIAS_UTEIS_MES,
-    "horas_dia": HORAS_DIA_CLT,
-    "meta_diaria": PISO_DIARIO_CLT_2026,
-    "meta_hora": PISO_HORA_CLT_2026,
-}
 
-
-def calcular_custo_km_moto(moto: dict, km_mensal_estimado: float = 2500.0) -> dict:
+def calcular_custo_km_detalhado(moto: dict, km_mensal_estimado: float = 2500.0) -> dict:
     km_mes = max(float(km_mensal_estimado), 500.0)
     preco_comb = float(moto.get("preco_combustivel", 6.19))
     consumo = max(float(moto.get("consumo_km_l", 35.0)), 1.0)
@@ -69,100 +55,41 @@ def calcular_custo_km_moto(moto: dict, km_mensal_estimado: float = 2500.0) -> di
     }
 
 
-def calcular_custo_km_frota(motos: dict, turnos: list, moto_ativa_id: str) -> dict:
-    if not motos:
-        return {"combustivel_km": 0.0, "pecas_km": 0.0, "fixo_km": 0.0, "total_km": 0.0, "custo_fixo_mensal": 0.0}
+def avaliar_pecas(moto: dict) -> list:
+    hodometro_atual = int(moto.get("hodometro_atual", 0))
+    lista_avaliada = []
+    for peca in moto.get("pecas", []):
+        ultima_km = int(peca.get("ultima_km", 0))
+        vida_util = max(int(peca.get("vida_util", 1000)), 1)
+        km_rodado = max(hodometro_atual - ultima_km, 0)
+        km_restante = vida_util - km_rodado
+        pct_desgaste = min(round((km_rodado / vida_util) * 100.0, 1), 150.0)
+        pct_saude = max(round(100.0 - pct_desgaste, 1), 0.0)
 
-    moto_ref = motos.get(moto_ativa_id) or next(iter(motos.values()))
-    if len(motos) == 1 or not turnos:
-        return calcular_custo_km_moto(moto_ref)
+        if km_restante <= 0:
+            status = "VENCIDA"
+            cor = "red"
+        elif pct_desgaste >= 80.0:
+            status = "ATENÇÃO"
+            cor = "orange"
+        else:
+            status = "OK"
+            cor = "green"
 
-    km_por_moto = {}
-    for t in turnos:
-        mid = t.get("moto_id", moto_ativa_id)
-        km_por_moto[mid] = km_por_moto.get(mid, 0.0) + float(t.get("km_rodado", 0.0))
-
-    total_km_frota = sum(km_por_moto.values())
-    if total_km_frota <= 0:
-        return calcular_custo_km_moto(moto_ref)
-
-    comb_pond = 0.0
-    pecas_pond = 0.0
-    fixo_pond = 0.0
-    fixo_mensal_soma = 0.0
-
-    for mid, m in motos.items():
-        c = calcular_custo_km_moto(m)
-        peso = km_por_moto.get(mid, 0.0) / total_km_frota
-        comb_pond += c["combustivel_km"] * peso
-        pecas_pond += c["pecas_km"] * peso
-        fixo_pond += c["fixo_km"] * peso
-        fixo_mensal_soma += c["custo_fixo_mensal"]
-
-    return {
-        "combustivel_km": round(comb_pond, 4),
-        "pecas_km": round(pecas_pond, 4),
-        "fixo_km": round(fixo_pond, 4),
-        "total_km": round(comb_pond + pecas_pond + fixo_pond, 4),
-        "custo_fixo_mensal": round(fixo_mensal_soma, 2),
-    }
+        item = dict(peca)
+        item.update({
+            "km_rodado": km_rodado,
+            "km_restante": km_restante,
+            "pct_desgaste": pct_desgaste,
+            "pct_saude": pct_saude,
+            "status": status,
+            "cor": cor,
+        })
+        lista_avaliada.append(item)
+    return lista_avaliada
 
 
-def calcular_saude_peca(peca: dict, hodometro_atual: int) -> dict:
-    ultima_km = int(peca.get("ultima_km", 0))
-    vida_util = max(int(peca.get("vida_util", 1000)), 1)
-    km_rodado = max(int(hodometro_atual) - ultima_km, 0)
-    km_restante = vida_util - km_rodado
-    pct_desgaste = min(round((km_rodado / vida_util) * 100.0, 1), 150.0)
-    pct_saude = max(round(100.0 - pct_desgaste, 1), 0.0)
-
-    if km_restante <= 0:
-        status = "VENCIDA"
-        cor = "red"
-    elif pct_desgaste >= 80.0:
-        status = "ATENÇÃO"
-        cor = "orange"
-    else:
-        status = "OK"
-        cor = "green"
-
-    return {
-        "km_rodado": km_rodado,
-        "km_restante": km_restante,
-        "pct_desgaste": pct_desgaste,
-        "pct_saude": pct_saude,
-        "status": status,
-        "cor": cor,
-    }
-
-
-def calcular_equivalencia_clt(lucro_liquido_total: float, dias_trabalhados: int, horas_trabalhadas: float) -> dict:
-    dias = max(int(dias_trabalhados), 1)
-    horas = max(float(horas_trabalhadas), 0.1)
-
-    meta_diaria = PISO_DIARIO_CLT_2026
-    meta_hora = PISO_HORA_CLT_2026
-
-    referencia_clt_periodo = dias * meta_diaria
-    saldo_vs_clt = lucro_liquido_total - referencia_clt_periodo
-    indice_clt = (lucro_liquido_total / referencia_clt_periodo * 100.0) if referencia_clt_periodo > 0 else 0.0
-
-    lucro_dia = lucro_liquido_total / dias
-    lucro_hora = lucro_liquido_total / horas
-
-    return {
-        "meta_diaria": meta_diaria,
-        "meta_hora": meta_hora,
-        "referencia_clt_periodo": round(referencia_clt_periodo, 2),
-        "saldo_vs_clt": round(saldo_vs_clt, 2),
-        "indice_clt": round(indice_clt, 1),
-        "lucro_dia": round(lucro_dia, 2),
-        "lucro_hora": round(lucro_hora, 2),
-        "superou_clt": lucro_liquido_total >= referencia_clt_periodo,
-    }
-
-
-def buscar_enderecos_brasil(termo: str, cidade_padrao: str = "Araras", estado_padrao: str = "SP") -> list:
+def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", estado_padrao: str = "SP") -> list:
     consulta = termo.strip()
     if not consulta or len(consulta) < 3:
         return []
@@ -217,13 +144,13 @@ def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> di
     return None
 
 
-def formatar_mensagem_whatsapp(
+def gerar_texto_whatsapp_rota(
     origem: str,
     destino: str,
     distancia_km: float,
     duracao_min: int,
     valor_corrida: float,
-    ida_e_volta: bool,
+    ida_e_volta: bool = True,
 ) -> tuple[str, str]:
     tipo_rota = "Ida e Volta" if ida_e_volta else "Somente Ida"
     texto = (
