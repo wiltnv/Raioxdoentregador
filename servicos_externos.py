@@ -77,7 +77,7 @@ def buscar_enderecos_online(query):
     cep_digits = re.sub(r"\D", "", q_clean)
     if len(cep_digits) == 8:
         try:
-            url_cep = f"https://viacep.com.br{cep_digits}/json/"
+            url_cep = "https://viacep.com.br" + "/ws/" + cep_digits + "/json/"
             req = urllib.request.Request(url_cep, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=3) as resp:
                 d_cep = json.loads(resp.read().decode("utf-8"))
@@ -88,7 +88,6 @@ def buscar_enderecos_online(query):
 
     q_busca = q_clean if ("," in q_clean or "-" in q_clean or "araras" in q_clean.lower()) else f"{q_clean}, Araras, SP"
 
-    # 1. ArcGIS World Geocoding (timeout curto de 2.5s para nao travar o dropdown)
     try:
         params_arc = urllib.parse.urlencode({
             "SingleLine": q_busca,
@@ -96,9 +95,9 @@ def buscar_enderecos_online(query):
             "maxLocations": "6",
             "f": "pjson"
         })
-        url_arc = f"https://arcgis.com?{params_arc}"
+        url_arc = "https://geocode.arcgis.com" + "/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?" + params_arc
         req = urllib.request.Request(url_arc, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=2.5) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data_arc = json.loads(resp.read().decode("utf-8"))
             for cand in data_arc.get("candidates", []):
                 addr = cand.get("address", "").strip()
@@ -108,13 +107,12 @@ def buscar_enderecos_online(query):
     except Exception:
         pass
 
-    # 2. Photon OpenStreetMap (garante retorno mesmo se o ArcGIS oscilar)
     if len(resultados) < 4:
         try:
             q_enc = urllib.parse.quote(q_clean)
-            url_ph = f"https://komoot.io{q_enc}&limit=5&lat=-22.357&lon=-47.384"
+            url_ph = "https://photon.komoot.io" + "/api/?q=" + q_enc + "&limit=5&lat=-22.357&lon=-47.384"
             req = urllib.request.Request(url_ph, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=2.5) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 for feat in data.get("features", []):
                     props = feat.get("properties", {})
@@ -132,7 +130,6 @@ def buscar_enderecos_online(query):
 
     return resultados[:6]
 
-
 def calcular_rota_osrm(coord1, coord2):
     lat1 = float(coord1["lat"] if isinstance(coord1, dict) else coord1)
     lon1 = float(coord1["lon"] if isinstance(coord1, dict) else coord1)
@@ -140,8 +137,8 @@ def calcular_rota_osrm(coord1, coord2):
     lon2 = float(coord2["lon"] if isinstance(coord2, dict) else coord2)
 
     urls = [
-        f"https://project-osrm.org{lon1},{lat1};{lon2},{lat2}?overview=false",
-        f"https://openstreetmap.de{lon1},{lat1};{lon2},{lat2}?overview=false"
+        "https://router.project-osrm.org" + f"/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false",
+        "https://routing.openstreetmap.de" + f"/routed-car/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
     ]
     for url in urls:
         try:
