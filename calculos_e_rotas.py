@@ -63,23 +63,28 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
         vida_util = max(float(peca.get("vida_util", 1000.0)), 100.0)
         custo_pecas_km += custo_troca / vida_util
 
+    seguro_mensal = float(moto.get("seguro_mensal", 0.0))
+    ipva_anual = float(moto.get("ipva_anual", 0.0))
+    custo_fixo_base_mensal = seguro_mensal + (ipva_anual / 12.0)
+    custo_fixo_km = custo_fixo_base_mensal / km_mes
+
     tipo_posse = moto.get("tipo_posse", "Própria")
     if tipo_posse == "Alugada":
         aluguel_semanal = float(moto.get("aluguel_semanal", 0.0))
-        custo_fixo_mensal = (aluguel_semanal * 4.33) + float(moto.get("seguro_mensal", 0.0))
-        custo_fixo_km = custo_fixo_mensal / km_mes
+        custo_aluguel_mensal = aluguel_semanal * 4.33
+        custo_aluguel_km = custo_aluguel_mensal / km_mes
     else:
-        seguro_mensal = float(moto.get("seguro_mensal", 0.0))
-        ipva_anual = float(moto.get("ipva_anual", 0.0))
-        custo_fixo_mensal = seguro_mensal + (ipva_anual / 12.0)
-        custo_fixo_km = custo_fixo_mensal / km_mes
+        custo_aluguel_mensal = 0.0
+        custo_aluguel_km = 0.0
 
-    custo_total_km = custo_combustivel_km + custo_pecas_km + custo_fixo_km
+    custo_fixo_mensal = custo_fixo_base_mensal + custo_aluguel_mensal
+    custo_total_km = custo_combustivel_km + custo_pecas_km + custo_fixo_km + custo_aluguel_km
 
     return {
         "custo_comb_km": round(custo_combustivel_km, 4),
         "custo_pecas_km": round(custo_pecas_km, 4),
         "custo_fixo_km": round(custo_fixo_km, 4),
+        "custo_aluguel_km": round(custo_aluguel_km, 4),
         "custo_km_total": round(custo_total_km, 4),
         "custo_km_combustivel": round(custo_combustivel_km, 4),
         "custo_km_pecas": round(custo_pecas_km, 4),
