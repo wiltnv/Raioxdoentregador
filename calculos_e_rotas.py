@@ -6,6 +6,7 @@ Raio-X do Entregador
 
 import urllib.parse
 import requests
+import streamlit as st
 
 SALARIO_BASE_SP_2026 = 1621.00
 PERICULOSIDADE_PCT = 0.30
@@ -21,7 +22,7 @@ PISO_DIARIO_CLT_2026 = 125.17
 PISO_HORA_CLT_2026 = 18.49
 
 HEADERS_HTTP = {
-    "User-Agent": "RaioXDoEntregador/2.0 (contato@raioxentregador.app)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RaioXDoEntregador/3.0"
 }
 
 
@@ -138,11 +139,13 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
     if len(consulta) < 3:
         return []
 
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; RaioXEntregador/2.0)"}
+    if "cache_enderecos" not in st.session_state:
+        st.session_state["cache_enderecos"] = {}
+
     resultados = []
     vistos = set()
 
-    # 1. Photon com viés geográfico em Araras/SP (-22.3572, -47.3842)
+    # 1. Photon API (com bias geográfico em Araras/SP)
     try:
         resp = requests.get(
             "https://komoot.io",
@@ -152,7 +155,7 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                 "lon": -47.3842,
                 "limit": 6,
             },
-            headers=headers,
+            headers=HEADERS_HTTP,
             timeout=4,
         )
         if resp.status_code == 200:
@@ -171,14 +174,20 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     label = " - ".join(partes) if partes else consulta
                     if label not in vistos:
                         vistos.add(label)
-                        resultados.append({"label": label, "lat": lat_val, "lon": lon_val})
+                        item = {"label": label, "lat": lat_val, "lon": lon_val}
+                        st.session_state["cache_enderecos"][label] = item
+                        resultados.append(item)
     except Exception:
         pass
 
-    # 2. Complemento via Nominatim (OpenStreetMap)
+    # 2. Nominatim OpenStreetMap Brasil
     if len(resultados) < 3:
         try:
-            q_nom = f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil" if cidade_padrao.lower() not in consulta.lower() else f"{consulta}, Brasil"
+            q_nom = (
+                f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil"
+                if cidade_padrao.lower() not in consulta.lower()
+                else f"{consulta}, Brasil"
+            )
             resp_nom = requests.get(
                 "https://openstreetmap.org",
                 params={
@@ -188,29 +197,145 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     "limit": 6,
                     "countrycodes": "br",
                 },
-                headers=headers,
+                headers=HEADERS_HTTP,
                 timeout=5,
             )
             if resp_nom.status_code == 200:
-                for item in resp_nom.json():
-                    lat_val = float(item.get("lat", 0))
-                    lon_val = float(item.get("lon", 0))
-                    addr = item.get("address", {})
-                    rua = addr.get("road") or addr.get("pedestrian") or item.get("name") or ""
+                for it in resp_nom.json():
+                    lat_val = float(it.get("lat", 0))
+                    lon_val = float(it.get("lon", 0))
+                    addr = it.get("address", {})
+                    rua = addr.get("road") or addr.get("pedestrian") or it.get("name") or ""
                     numero = addr.get("house_number") or ""
                     bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
                     cidade = addr.get("city") or addr.get("town") or cidade_padrao
                     uf = addr.get("state") or estado_padrao
                     partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
-                    label = " - ".join(partes) if partes else item.get("display_name", consulta)
+                    label = " - ".join(partes) if partes else it.get("display_name", consulta)
                     if label not in vistos and lat_val != 0:
                         vistos.add(label)
-                        resultados.append({"label": label, "lat": lat_val, "lon": lon_val})
+                        item = {"label": label, "lat": lat_val, "lon": lon_val}
+                        st.session_state["cache_enderecos"][label] = item
+                        resultados.append(item)
         except Exception:
             pass
 
     return resultados
-    
+
+
+def buscar_nomes_searchbox(termo: str, **kwargs) -> list[str]:
+    cidade = "Araras"
+    uf = "SP"
+    if "estado" in st.session_state and isinstance(st.session_state["estado"], dict):
+        cidade = st.session_state["estado"].get("cidade", "Araras")
+        uf = st.session_state["estado"].get("estado", "SP")
+    itens = buscar_enderecos_autocomplete(termo, cidade, uf)
+    return [item["label"] for item in itens]
+
+
+def reverso_gps_nominatim(lat: float, lon: float) -> str:
+    try:
+        resp = requests.get(
+            "https://openstreetmap.org",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers=HEADERS_HTTP,
+            timeout=5,
+        )
+                if resp.status_code == 200:
+            for feat in resp.json().get("features", []):
+                props = feat.get("properties", {})
+                coords = feat.get("geometry", {}).get("coordinates", [])
+                if isinstance(coords, list) and len(coords) >= 2:
+                    lon_val = float(coords.pop(0))
+                    lat_val = float(coords.pop(0))
+                    rua = props.get("street") or props.get("name") or ""
+                    numero = props.get("housenumber") or ""
+                    bairro = props.get("district") or props.get("suburb") or ""
+                    cidade = props.get("city") or props.get("town") or cidade_padrao
+                    uf = props.get("state") or estado_padrao
+                    partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
+                    label = " - ".join(partes) if partes else consulta
+                    if label not in vistos:
+                        vistos.add(label)
+                        item = {"label": label, "lat": lat_val, "lon": lon_val}
+                        st.session_state["cache_enderecos"][label] = item
+                        resultados.append(item)
+    except Exception:
+        pass
+
+    # 2. Nominatim OpenStreetMap Brasil
+    if len(resultados) < 3:
+        try:
+            q_nom = (
+                f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil"
+                if cidade_padrao.lower() not in consulta.lower()
+                else f"{consulta}, Brasil"
+            )
+            resp_nom = requests.get(
+                "https://openstreetmap.org",
+                params={
+                    "q": q_nom,
+                    "format": "json",
+                    "addressdetails": 1,
+                    "limit": 6,
+                    "countrycodes": "br",
+                },
+                headers=HEADERS_HTTP,
+                timeout=5,
+            )
+            if resp_nom.status_code == 200:
+                for it in resp_nom.json():
+                    lat_val = float(it.get("lat", 0))
+                    lon_val = float(it.get("lon", 0))
+                    addr = it.get("address", {})
+                    rua = addr.get("road") or addr.get("pedestrian") or it.get("name") or ""
+                    numero = addr.get("house_number") or ""
+                    bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
+                    cidade = addr.get("city") or addr.get("town") or cidade_padrao
+                    uf = addr.get("state") or estado_padrao
+                    partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
+                    label = " - ".join(partes) if partes else it.get("display_name", consulta)
+                    if label not in vistos and lat_val != 0:
+                        vistos.add(label)
+                        item = {"label": label, "lat": lat_val, "lon": lon_val}
+                        st.session_state["cache_enderecos"][label] = item
+                        resultados.append(item)
+        except Exception:
+            pass
+
+    return resultados
+
+
+def buscar_nomes_searchbox(termo: str, **kwargs) -> list[str]:
+    cidade = "Araras"
+    uf = "SP"
+    if "estado" in st.session_state and isinstance(st.session_state["estado"], dict):
+        cidade = st.session_state["estado"].get("cidade", "Araras")
+        uf = st.session_state["estado"].get("estado", "SP")
+    itens = buscar_enderecos_autocomplete(termo, cidade, uf)
+    return [item["label"] for item in itens]
+
+
+def reverso_gps_nominatim(lat: float, lon: float) -> str:
+    try:
+        resp = requests.get(
+            "https://openstreetmap.org",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers=HEADERS_HTTP,
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            addr = resp.json().get("address", {})
+            rua = addr.get("road") or addr.get("pedestrian") or ""
+            numero = addr.get("house_number") or ""
+            bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
+            cidade = addr.get("city") or addr.get("town") or "Araras"
+            partes = [p for p in [f"{rua} {numero}".strip(), bairro, cidade] if p]
+            if partes:
+                return " - ".join(partes)
+    except Exception:
+        pass
+    return f"GPS ({lat:.5f}, {lon:.5f})"
 
 
 def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> dict | None:
@@ -252,28 +377,4 @@ def gerar_texto_whatsapp_rota(
     )
     link = f"https://whatsapp.com{urllib.parse.quote(texto)}"
     return texto, link
-def buscar_nomes_searchbox(termo: str, **kwargs) -> list[tuple[str, dict]]:
-    itens = buscar_enderecos_autocomplete(termo, "Araras", "SP")
-    return [(item["label"], item) for item in itens]
 
-
-def reverso_gps_nominatim(lat: float, lon: float) -> str:
-    try:
-        resp = requests.get(
-            "https://openstreetmap.org",
-            params={"lat": lat, "lon": lon, "format": "json"},
-            headers=HEADERS_HTTP,
-            timeout=5,
-        )
-        if resp.status_code == 200:
-            addr = resp.json().get("address", {})
-            rua = addr.get("road") or addr.get("pedestrian") or ""
-            numero = addr.get("house_number") or ""
-            bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
-            cidade = addr.get("city") or addr.get("town") or "Araras"
-            partes = [p for p in [f"{rua} {numero}".strip(), bairro, cidade] if p]
-            if partes:
-                return " - ".join(partes)
-    except Exception:
-        pass
-    return f"GPS ({lat:.5f}, {lon:.5f})"
