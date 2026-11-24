@@ -279,27 +279,32 @@ with aba2:
     col_o, col_d = st.columns(2)
     with col_o:
         st.markdown("**1. Endereço de Coleta / Origem**")
-        sel_o = st_searchbox(
+        txt_sel_o = st_searchbox(
             buscar_nomes_searchbox,
             placeholder="Digite rua, número ou local de coleta...",
             debounce=400,
-            key="sb_origem_entrega",
+            key="sb_origem_entrega_v3",
         )
     with col_d:
         st.markdown("**2. Endereço de Entrega / Destino**")
-        sel_d = st_searchbox(
+        txt_sel_d = st_searchbox(
             buscar_nomes_searchbox,
             placeholder="Digite rua, número ou local de entrega...",
             debounce=400,
-            key="sb_destino_entrega",
+            key="sb_destino_entrega_v3",
         )
 
-    col_p1, col_p2, col_p3 = st.columns(3)
+    col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1.2, 1.2])
     valor_km_cobrado = col_p1.number_input("Cobrar por KM (R$)", min_value=0.5, value=float(cfg_orc.get("valor_km", 2.0)), step=0.1)
     taxa_min = col_p2.number_input("Taxa Mínima (R$)", min_value=0.0, value=float(cfg_orc.get("taxa_minima", 8.0)), step=1.0)
     retorno_inc = col_p3.checkbox("Incluir volta (Ida + Volta)", value=bool(cfg_orc.get("retorno_incluso", True)))
+    tel_cliente = col_p4.text_input("WhatsApp Cliente (opcional)", placeholder="Ex: 19999999999")
 
-    if isinstance(sel_o, dict) and isinstance(sel_d, dict):
+    cache_end = st.session_state.get("cache_enderecos", {})
+    sel_o = cache_end.get(txt_sel_o) if isinstance(txt_sel_o, str) else None
+    sel_d = cache_end.get(txt_sel_d) if isinstance(txt_sel_d, str) else None
+
+    if sel_o and sel_d:
         rota = calcular_rota_osrm(sel_o["lat"], sel_o["lon"], sel_d["lat"], sel_d["lon"])
         if rota:
             dist_desloc = 0.0
@@ -329,10 +334,17 @@ with aba2:
                 retorno_incluso=retorno_inc,
                 dist_deslocamento_km=dist_desloc,
             )
-            st.link_button("📲 Enviar Orçamento no WhatsApp", url=link_wpp, type="primary", use_container_width=True)
-            st.text_area("Texto do Orçamento:", value=msg_wpp, height=150)
+            num_limpo = "".join(ch for ch in tel_cliente if ch.isdigit())
+            if num_limpo:
+                if not num_limpo.startswith("55"):
+                    num_limpo = "55" + num_limpo
+                link_wpp = link_wpp.replace("https://whatsapp.com?", f"https://whatsapp.com?phone={num_limpo}&")
+
+            st.text_area("📲 Mensagem de Orçamento (editável):", value=msg_wpp, height=155)
+            st.link_button("📲 Abrir e Enviar no WhatsApp", url=link_wpp, type="primary", use_container_width=True)
         else:
-            st.warning("Não foi possível calcular a rota viária entre esses pontos.")
+            st.warning("Não foi possível calcular a rota viária entre esses dois pontos.")
+
 
 
 with aba3:
