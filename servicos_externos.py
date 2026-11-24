@@ -88,6 +88,7 @@ def buscar_enderecos_online(query):
 
     q_busca = q_clean if ("," in q_clean or "-" in q_clean or "araras" in q_clean.lower()) else f"{q_clean}, Araras, SP"
 
+    # 1. ArcGIS World Geocoding (timeout curto de 2.5s para nao travar o dropdown)
     try:
         params_arc = urllib.parse.urlencode({
             "SingleLine": q_busca,
@@ -97,7 +98,7 @@ def buscar_enderecos_online(query):
         })
         url_arc = f"https://arcgis.com?{params_arc}"
         req = urllib.request.Request(url_arc, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
             data_arc = json.loads(resp.read().decode("utf-8"))
             for cand in data_arc.get("candidates", []):
                 addr = cand.get("address", "").strip()
@@ -107,7 +108,30 @@ def buscar_enderecos_online(query):
     except Exception:
         pass
 
+    # 2. Photon OpenStreetMap (garante retorno mesmo se o ArcGIS oscilar)
+    if len(resultados) < 4:
+        try:
+            q_enc = urllib.parse.quote(q_clean)
+            url_ph = f"https://komoot.io{q_enc}&limit=5&lat=-22.357&lon=-47.384"
+            req = urllib.request.Request(url_ph, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=2.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for feat in data.get("features", []):
+                    props = feat.get("properties", {})
+                    coords = feat.get("geometry", {}).get("coordinates", [])
+                    rua = props.get("street") or props.get("name") or ""
+                    numero = props.get("housenumber") or ""
+                    bairro = props.get("district") or props.get("suburb") or ""
+                    cidade = props.get("city") or props.get("town") or ""
+                    label = ", ".join([p for p in [f"{rua}, {numero}" if numero else rua, bairro, cidade] if p])
+                    if label and len(coords) == 2:
+                        lon_v, lat_v = coords
+                        add_item(label, lat_v, lon_v)
+        except Exception:
+            pass
+
     return resultados[:6]
+
 
 def calcular_rota_osrm(coord1, coord2):
     lat1 = float(coord1["lat"] if isinstance(coord1, dict) else coord1)
