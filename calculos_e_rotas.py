@@ -40,9 +40,9 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
             kms_abast = [int(a.get("km", 0)) for a in abast_moto if int(a.get("km", 0)) > 0]
             if len(kms_abast) >= 2:
                 delta_km = max(kms_abast) - min(kms_abast)
+                abast_ordenados = sorted(abast_moto, key=lambda x: int(x.get("km", 0)))
                 litros_apos_primeiro = sum(
-                    float(a.get("litros", 0.0))
-                    for a in sorted(abast_moto, key=lambda x: int(x.get("km", 0)))[1:]
+                    float(a.get("litros", 0.0)) for a in abast_ordenados[1:]
                 )
                 if delta_km > 0 and litros_apos_primeiro > 0:
                     consumo = delta_km / litros_apos_primeiro
@@ -99,11 +99,14 @@ def avaliar_pecas(moto: dict) -> list:
     for peca in moto.get("pecas", []):
         ultima_km = int(peca.get("ultima_km", 0))
         intervalo = max(int(peca.get("intervalo", peca.get("vida_util", 1000))), 1)
+        custo_peca = float(peca.get("custo", 0.0))
+        custo_por_km = custo_peca / float(intervalo)
         proxima_km = ultima_km + intervalo
         km_rodado = max(hodometro_atual - ultima_km, 0)
         km_restante = proxima_km - hodometro_atual
         pct_desgaste = min(round((km_rodado / intervalo) * 100.0, 1), 150.0)
         pct_saude = max(round(100.0 - pct_desgaste, 1), 0.0)
+        em_alerta = km_restante <= 0 or pct_desgaste >= 80.0
 
         if km_restante <= 0:
             status = "VENCIDA"
@@ -120,6 +123,7 @@ def avaliar_pecas(moto: dict) -> list:
             "ultima_km": ultima_km,
             "intervalo": intervalo,
             "proxima_km": proxima_km,
+            "custo_por_km": round(custo_por_km, 4),
             "km_rodado": km_rodado,
             "km_rodados": km_rodado,
             "km_restante": km_restante,
@@ -127,6 +131,7 @@ def avaliar_pecas(moto: dict) -> list:
             "percentual_uso": pct_desgaste,
             "pct_desgaste": pct_desgaste,
             "pct_saude": pct_saude,
+            "alerta": em_alerta,
             "status": status,
             "cor": cor,
         })
@@ -155,6 +160,7 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                 props = feat.get("properties", {})
                 coords = feat.get("geometry", {}).get("coordinates", [])
                 if len(coords) >= 2:
+                    lon_val, lat_val = coords
                     rua = props.get("street") or props.get("name") or ""
                     numero = props.get("housenumber") or ""
                     bairro = props.get("district") or props.get("suburb") or ""
@@ -164,8 +170,8 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     label = " - ".join(partes)
                     resultados.append({
                         "label": label,
-                        "lat": float(coords[1]),
-                        "lon": float(coords[0]),
+                        "lat": float(lat_val),
+                        "lon": float(lon_val),
                     })
     except Exception:
         pass
@@ -181,8 +187,9 @@ def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> di
             dados = resp.json()
             rotas = dados.get("routes", [])
             if rotas:
-                dist_km = round(rotas[0]["distance"] / 1000.0, 2)
-                dur_min = max(int(round(rotas[0]["duration"] / 60.0)), 1)
+                primeira_rota = rotas.pop(0)
+                dist_km = round(primeira_rota["distance"] / 1000.0, 2)
+                dur_min = max(int(round(primeira_rota["duration"] / 60.0)), 1)
                 return {"distancia_km": dist_km, "duracao_min": dur_min}
     except Exception:
         pass
