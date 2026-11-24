@@ -134,25 +134,26 @@ def avaliar_pecas(moto: dict) -> list:
 
 
 def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", estado_padrao: str = "SP") -> list:
-    consulta = termo.strip()
-    if not consulta or len(consulta) < 3:
+    consulta = str(termo or "").strip()
+    if len(consulta) < 3:
         return []
 
-    if cidade_padrao and cidade_padrao.lower() not in consulta.lower():
-        consulta_completa = f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil"
-    else:
-        consulta_completa = f"{consulta}, Brasil"
-
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; RaioXEntregador/2.0)"}
     resultados = []
     vistos = set()
 
-    # 1. Tentativa via Photon (Komoot)
+    # 1. Photon com viés geográfico em Araras/SP (-22.3572, -47.3842)
     try:
         resp = requests.get(
             "https://komoot.io",
-            params={"q": consulta_completa, "limit": 6},
-            headers=HEADERS_HTTP,
-            timeout=5,
+            params={
+                "q": f"{consulta} {cidade_padrao}",
+                "lat": -22.3572,
+                "lon": -47.3842,
+                "limit": 6,
+            },
+            headers=headers,
+            timeout=4,
         )
         if resp.status_code == 200:
             for feat in resp.json().get("features", []):
@@ -167,27 +168,28 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     cidade = props.get("city") or props.get("town") or cidade_padrao
                     uf = props.get("state") or estado_padrao
                     partes = [p for p in [f"{rua} {numero}".strip(), bairro, f"{cidade}/{uf}"] if p]
-                    label = " - ".join(partes) if partes else consulta_completa
+                    label = " - ".join(partes) if partes else consulta
                     if label not in vistos:
                         vistos.add(label)
                         resultados.append({"label": label, "lat": lat_val, "lon": lon_val})
     except Exception:
         pass
 
-    # 2. Fallback / Complemento via Nominatim (OpenStreetMap oficial)
+    # 2. Complemento via Nominatim (OpenStreetMap)
     if len(resultados) < 3:
         try:
+            q_nom = f"{consulta}, {cidade_padrao}, {estado_padrao}, Brasil" if cidade_padrao.lower() not in consulta.lower() else f"{consulta}, Brasil"
             resp_nom = requests.get(
                 "https://openstreetmap.org",
                 params={
-                    "q": consulta_completa,
+                    "q": q_nom,
                     "format": "json",
                     "addressdetails": 1,
                     "limit": 6,
                     "countrycodes": "br",
                 },
-                headers=HEADERS_HTTP,
-                timeout=6,
+                headers=headers,
+                timeout=5,
             )
             if resp_nom.status_code == 200:
                 for item in resp_nom.json():
@@ -208,6 +210,7 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
             pass
 
     return resultados
+    
 
 
 def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> dict | None:
@@ -249,7 +252,7 @@ def gerar_texto_whatsapp_rota(
     )
     link = f"https://whatsapp.com{urllib.parse.quote(texto)}"
     return texto, link
-def buscar_nomes_searchbox(termo: str) -> list[tuple[str, dict]]:
+def buscar_nomes_searchbox(termo: str, **kwargs) -> list[tuple[str, dict]]:
     itens = buscar_enderecos_autocomplete(termo, "Araras", "SP")
     return [(item["label"], item) for item in itens]
 
