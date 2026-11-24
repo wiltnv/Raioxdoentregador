@@ -66,6 +66,7 @@ def buscar_enderecos_online(query):
     q_clean = query.strip()
     resultados = []
     vistos = set()
+    erros = []
 
     def add_item(label, lat, lon):
         chave = label.lower()
@@ -77,14 +78,15 @@ def buscar_enderecos_online(query):
     if len(cep_digits) == 8:
         try:
             url_cep = f"https://viacep.com.br{cep_digits}/json/"
-            req = urllib.request.Request(url_cep, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
+            req = urllib.request.Request(url_cep, headers={"User-Agent": "RaioXEntregador/2.0"})
             with urllib.request.urlopen(req, timeout=4) as resp:
                 d_cep = json.loads(resp.read().decode("utf-8"))
                 if not d_cep.get("erro"):
                     q_clean = f"{d_cep.get('logradouro', '')}, {d_cep.get('bairro', '')}, {d_cep.get('localidade', '')} - {d_cep.get('uf', '')}".strip(", ")
-        except Exception:
-            pass
+        except Exception as e:
+            erros.append(f"ViaCEP: {e}")
 
+    # 1. ArcGIS World Geocoding (sem restrição de IP de nuvem)
     try:
         params_arc = urllib.parse.urlencode({
             "SingleLine": q_clean,
@@ -95,8 +97,8 @@ def buscar_enderecos_online(query):
             "outFields": "Match_addr,PlaceName"
         })
         url_arc = f"https://arcgis.com?{params_arc}"
-        req = urllib.request.Request(url_arc, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        req = urllib.request.Request(url_arc, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data_arc = json.loads(resp.read().decode("utf-8"))
             for cand in data_arc.get("candidates", []):
                 attrs = cand.get("attributes", {})
@@ -106,35 +108,41 @@ def buscar_enderecos_online(query):
                 label = f"{place} — {addr}" if (place and place.lower() not in addr.lower()) else addr
                 if label and loc.get("y") and loc.get("x"):
                     add_item(label, loc["y"], loc["x"])
-    except Exception:
-        pass
+    except Exception as e:
+        erros.append(f"ArcGIS: {e}")
 
-    if len(resultados) < 5:
+    # 2. Nominatim OpenStreetMap (User-Agent identificador exigido pela politica OSM)
+    if len(resultados) < 4:
         try:
-            q_enc = urllib.parse.quote(q_clean)
-            url_ph = f"https://komoot.io{q_enc}&limit=6&lat=-22.357&lon=-47.384"
-            req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                for feat in data.get("features", []):
-                    props = feat.get("properties", {})
-                    if props.get("countrycode", "BR").upper() not in ["BR", ""]:
-                        continue
-                    coords = feat.get("geometry", {}).get("coordinates", [])
-                    rua = props.get("street") or props.get("name") or ""
-                    numero = props.get("housenumber") or ""
-                    bairro = props.get("district") or props.get("suburb") or ""
-                    cidade = props.get("city") or props.get("town") or props.get("municipality") or ""
-                    estado = props.get("state") or ""
-                    partes = [p for p in [f"{rua}, {numero}" if (rua and numero) else rua, bairro, f"{cidade} - {estado}" if (cidade and estado) else cidade] if p]
-                    label = ", ".join(partes) if partes else props.get("name", "")
-                    if label and len(coords) == 2:
-                        lon_v, lat_v = coords
-                        add_item(label, lat_v, lon_v)
-        except Exception:
-            pass
+            params_nom = urllib.parse.urlencode({
+                "q": q_clean,
+                "format": "json",
+                "addressdetails": 1,
+                "countrycodes": "br",
+                "limit": 5,
+                "viewbox": "-47.50,-22.25,-47.25,-22.45"
+            })
+            url_nom = f"https://openstreetmap.org?{params_nom}"
+            req = urllib.request.Request(url_nom, headers={"User-Agent": "RaioXEntregadorApp/2.0 (contato@raioxentregador.app)"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                items = json.loads(resp.read().decode("utf-8"))
+                for it in items:
+                    addr = it.get("address", {})
+                    rua = addr.get("road") or addr.get("pedestrian") or it.get("name", "")
+                    num = addr.get("house_number", "")
+                    bairro = addr.get("suburb") or addr.get("neighbourhood", "")
+                    cidade = addr.get("city") or addr.get("town") or addr.get("municipality") or ""
+                    uf = addr.get("state", "")
+                    partes = [p for p in [f"{rua}, {num}" if (rua and num) else rua, bairro, f"{cidade} - {uf}" if (cidade and uf) else cidade] if p]
+                    label = ", ".join(partes) or it.get("display_name", "")
+                    if label and it.get("lat") and it.get("lon"):
+                        add_item(label, it["lat"], it["lon"])
+        except Exception as e:
+            erros.append(f"Nominatim: {e}")
 
+    st.session_state["debug_busca"] = " | ".join(erros) if erros else f"OK ({len(resultados)} itens para '{q_clean}')"
     return resultados[:6]
+
 
 def calcular_rota_osrm(coord1, coord2):
     try:
