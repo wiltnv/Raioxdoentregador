@@ -126,7 +126,7 @@ def carregar_estado(user_key: str) -> dict:
         try:
             resp = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
             if resp.data and len(resp.data) > 0:
-                registro = resp.data
+                registro = resp.data.pop(0)
                 estado = registro.get("state_json")
                 if isinstance(estado, dict) and "motos" in estado and estado["motos"]:
                     st.session_state["sb_conectado"] = True
