@@ -78,61 +78,37 @@ def buscar_enderecos_online(query):
     if len(cep_digits) == 8:
         try:
             url_cep = f"https://viacep.com.br{cep_digits}/json/"
-            req = urllib.request.Request(url_cep, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            req = urllib.request.Request(url_cep, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 d_cep = json.loads(resp.read().decode("utf-8"))
                 if not d_cep.get("erro"):
                     q_clean = f"{d_cep.get('logradouro', '')}, {d_cep.get('bairro', '')}, {d_cep.get('localidade', '')} - {d_cep.get('uf', '')}".strip(", ")
         except Exception:
             pass
 
-    # 1. Photon OpenStreetMap (mesma base cartografica do OSRM = maxima precisao de rota)
+    q_busca = q_clean if ("," in q_clean or "-" in q_clean or "araras" in q_clean.lower()) else f"{q_clean}, Araras, SP"
+
     try:
-        q_enc = urllib.parse.quote(q_clean)
-        url_ph = f"https://komoot.io{q_enc}&limit=6&lat=-22.357&lon=-47.384"
-        req = urllib.request.Request(url_ph, headers={"User-Agent": "RaioXEntregadorApp/1.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            for feat in data.get("features", []):
-                props = feat.get("properties", {})
-                if props.get("countrycode", "BR").upper() not in ["BR", ""]:
-                    continue
-                coords = feat.get("geometry", {}).get("coordinates", [])
-                rua = props.get("street") or props.get("name") or ""
-                numero = props.get("housenumber") or ""
-                bairro = props.get("district") or props.get("suburb") or ""
-                cidade = props.get("city") or props.get("town") or props.get("municipality") or ""
-                estado = props.get("state") or ""
-                partes = []
-                if rua:
-                    partes.append(f"{rua}, {numero}" if numero else rua)
-                if bairro:
-                    partes.append(bairro)
-                if cidade:
-                    partes.append(f"{cidade} - {estado}" if estado else cidade)
-                label = ", ".join(partes) if partes else props.get("name", "")
-                if label and len(coords) == 2:
-                    lon_v, lat_v = coords
-                    add_item(label, lat_v, lon_v)
+        params_arc = urllib.parse.urlencode({
+            "SingleLine": q_busca,
+            "location": "-47.384,-22.357",
+            "distance": "50000",
+            "countryCode": "BRA",
+            "outSR": "4326",
+            "maxLocations": "6",
+            "f": "pjson"
+        })
+        url_arc = f"https://arcgis.com?{params_arc}"
+        req = urllib.request.Request(url_arc, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data_arc = json.loads(resp.read().decode("utf-8"))
+            for cand in data_arc.get("candidates", []):
+                addr = cand.get("address", "").strip()
+                loc = cand.get("location", {})
+                if addr and loc.get("y") is not None and loc.get("x") is not None:
+                    add_item(addr, loc["y"], loc["x"])
     except Exception:
         pass
-
-    # 2. ArcGIS apenas como plano B se o Photon nao retornar nada
-    if not resultados:
-        try:
-            q_busca = q_clean if ("," in q_clean or "-" in q_clean) else f"{q_clean}, Araras, SP"
-            params_arc = urllib.parse.urlencode({"SingleLine": q_busca, "outSR": "4326", "maxLocations": "5", "f": "pjson"})
-            url_arc = f"https://arcgis.com?{params_arc}"
-            req = urllib.request.Request(url_arc, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                data_arc = json.loads(resp.read().decode("utf-8"))
-                for cand in data_arc.get("candidates", []):
-                    addr = cand.get("address", "").strip()
-                    loc = cand.get("location", {})
-                    if addr and loc.get("y") is not None and loc.get("x") is not None:
-                        add_item(addr, loc["y"], loc["x"])
-        except Exception:
-            pass
 
     return resultados[:6]
 
