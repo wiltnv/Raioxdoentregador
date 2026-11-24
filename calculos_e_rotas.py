@@ -7,7 +7,6 @@ Raio-X do Entregador
 import urllib.parse
 import requests
 
-# Constantes CLT 2026
 SALARIO_BASE_SP_2026 = 1850.00
 PERICULOSIDADE_PCT = 0.30
 SALARIO_COM_PERICULOSIDADE = 2405.00
@@ -21,8 +20,18 @@ PISO_DIARIO_CLT_2026 = 125.17
 PISO_HORA_CLT_2026 = 15.65
 
 
-def calcular_custo_km_detalhado(moto: dict, km_mensal_estimado: float = 2500.0) -> dict:
-    km_mes = max(float(km_mensal_estimado), 500.0)
+def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> dict:
+    if isinstance(contexto, dict):
+        turnos = contexto.get("turnos", [])
+        km_total = sum(float(t.get("km_rodado", 0.0)) for t in turnos)
+        dias = len({t.get("data") for t in turnos if t.get("data")})
+        if dias > 0 and km_total > 0:
+            km_mes = max((km_total / dias) * DIAS_UTEIS_MES, 1000.0)
+        else:
+            km_mes = 2500.0
+    else:
+        km_mes = max(float(contexto), 500.0)
+
     preco_comb = float(moto.get("preco_combustivel", 6.19))
     consumo = max(float(moto.get("consumo_km_l", 35.0)), 1.0)
     custo_combustivel_km = preco_comb / consumo
@@ -52,6 +61,7 @@ def calcular_custo_km_detalhado(moto: dict, km_mensal_estimado: float = 2500.0) 
         "fixo_km": round(custo_fixo_km, 4),
         "total_km": round(custo_total_km, 4),
         "custo_fixo_mensal": round(custo_fixo_mensal, 2),
+        "km_mes_estimado": round(km_mes, 1),
     }
 
 
@@ -119,8 +129,8 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     label = " - ".join(partes)
                     resultados.append({
                         "label": label,
-                        "lat": float(coords[1]),
-                        "lon": float(coords[0]),
+                        "lat": float(coords),
+                        "lon": float(coords),
                     })
     except Exception:
         pass
@@ -136,8 +146,8 @@ def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> di
             dados = resp.json()
             rotas = dados.get("routes", [])
             if rotas:
-                dist_km = round(rotas[0]["distance"] / 1000.0, 2)
-                dur_min = max(int(round(rotas[0]["duration"] / 60.0)), 1)
+                dist_km = round(rotas["distance"] / 1000.0, 2)
+                dur_min = max(int(round(rotas["duration"] / 60.0)), 1)
                 return {"distancia_km": dist_km, "duracao_min": dur_min}
     except Exception:
         pass
