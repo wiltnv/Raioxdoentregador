@@ -2,9 +2,9 @@ import streamlit as st
 import json
 import os
 import re
+import math
 import urllib.request
 import urllib.parse
-import math
 from calculos_moto import get_default_data, migrate_data
 
 try:
@@ -91,9 +91,6 @@ def buscar_enderecos_online(query):
     try:
         params_arc = urllib.parse.urlencode({
             "SingleLine": q_busca,
-            "location": "-47.384,-22.357",
-            "distance": "50000",
-            "countryCode": "BRA",
             "outSR": "4326",
             "maxLocations": "6",
             "f": "pjson"
