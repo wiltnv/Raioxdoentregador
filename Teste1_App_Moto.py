@@ -309,6 +309,7 @@ with tab_sim:
         st.code(msg_whats, language="markdown")
         link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
+
         
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
