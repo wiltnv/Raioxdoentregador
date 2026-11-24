@@ -56,6 +56,10 @@ def calcular_custo_km_detalhado(moto: dict, contexto: dict | float = 2500.0) -> 
     custo_total_km = custo_combustivel_km + custo_pecas_km + custo_fixo_km
 
     return {
+        "custo_km_combustivel": round(custo_combustivel_km, 4),
+        "custo_km_pecas": round(custo_pecas_km, 4),
+        "custo_km_fixo": round(custo_fixo_km, 4),
+        "custo_km_total": round(custo_total_km, 4),
         "combustivel_km": round(custo_combustivel_km, 4),
         "pecas_km": round(custo_pecas_km, 4),
         "fixo_km": round(custo_fixo_km, 4),
@@ -129,8 +133,8 @@ def buscar_enderecos_autocomplete(termo: str, cidade_padrao: str = "Araras", est
                     label = " - ".join(partes)
                     resultados.append({
                         "label": label,
-                        "lat": float(coords),
-                        "lon": float(coords),
+                        "lat": float(coords[1]),
+                        "lon": float(coords[0]),
                     })
     except Exception:
         pass
@@ -146,8 +150,8 @@ def calcular_rota_osrm(lat1: float, lon1: float, lat2: float, lon2: float) -> di
             dados = resp.json()
             rotas = dados.get("routes", [])
             if rotas:
-                dist_km = round(rotas["distance"] / 1000.0, 2)
-                dur_min = max(int(round(rotas["duration"] / 60.0)), 1)
+                dist_km = round(rotas[0]["distance"] / 1000.0, 2)
+                dur_min = max(int(round(rotas[0]["duration"] / 60.0)), 1)
                 return {"distancia_km": dist_km, "duracao_min": dur_min}
     except Exception:
         pass
@@ -173,3 +177,4 @@ def gerar_texto_whatsapp_rota(
     )
     link = f"https://wa.me{urllib.parse.quote(texto)}"
     return texto, link
+
