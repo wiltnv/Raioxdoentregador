@@ -259,7 +259,6 @@ with aba1:
         c3.metric("Custos Fixos / km", f"R$ {custo_info['custo_fixo_km']:.3f}")
         c4.metric("Aluguel / km", f"R$ {custo_info['custo_aluguel_km']:.3f}")
 
-
 with aba2:
     st.subheader("🗺️ Simulador de Corrida & Orçamento WhatsApp")
     cfg_orc = estado.get("orcamento_config", {"valor_km": 2.0, "taxa_minima": 8.0, "retorno_incluso": True})
@@ -292,13 +291,6 @@ with aba2:
             buscar_nomes_searchbox,
             placeholder="Digite rua, número ou local de entrega...",
             debounce=400,
-            key="sb_destino_entrega",
-        )
-    with col_d:
-        st.markdown("**2. Endereço de Entrega / Destino**")
-        sel_d = st_searchbox(
-            buscar_nomes_searchbox,
-            placeholder="Digite rua, número ou local de entrega...",
             key="sb_destino_entrega",
         )
 
@@ -341,6 +333,7 @@ with aba2:
             st.text_area("Texto do Orçamento:", value=msg_wpp, height=150)
         else:
             st.warning("Não foi possível calcular a rota viária entre esses pontos.")
+
 
 with aba3:
     with st.expander(f"🔩 Plano de Manutenção Preventiva — {moto_atual['apelido']} ({len(pecas_avaliadas)} itens)", expanded=False):
