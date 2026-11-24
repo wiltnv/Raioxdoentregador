@@ -211,6 +211,15 @@ with tab_sim:
             horizontal=True
         )
 
+        def _ler_busca(res):
+            if isinstance(res, dict) and "lat" in res:
+                return res, res.get("label", "")
+            if isinstance(res, (list, tuple)) and len(res) == 2:
+                lbl, d = res
+                if isinstance(d, dict) and "lat" in d:
+                    return d, str(lbl)
+            return None, ""
+
         coord_partida = None
         if modo_partida == "📡 Meu GPS Atual (HTTPS)":
             if HAS_GEO:
@@ -225,17 +234,14 @@ with tab_sim:
         elif modo_partida == "🏍️ Digitar Rua onde estou":
             if HAS_SEARCHBOX:
                 res_part = st_searchbox(buscar_enderecos_online, placeholder="Ex: Av. Loreto", key="sb_part")
-                if isinstance(res_part, dict):
-                    coord_partida = res_part
+                coord_partida, _ = _ler_busca(res_part)
 
         col_e1, col_e2 = st.columns([3, 1])
         coord_retirada, label_retirada = None, ""
         with col_e1:
             if HAS_SEARCHBOX:
                 res_ret = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Retirada (Rua, Comércio ou CEP)", key="sb_ret")
-                if isinstance(res_ret, dict):
-                    coord_retirada = res_ret
-                    label_retirada = res_ret.get("label", "")
+                coord_retirada, label_retirada = _ler_busca(res_ret)
             else:
                 label_retirada = st.text_input("Endereço de Retirada")
         num_ret = col_e2.text_input("Nº / Compl. (Ret.)", key="num_ret")
@@ -245,13 +251,11 @@ with tab_sim:
         with col_e3:
             if HAS_SEARCHBOX:
                 res_ent = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Entrega (Rua, Comércio ou CEP)", key="sb_ent")
-                if isinstance(res_ent, dict):
-                    coord_entrega = res_ent
-                    label_entrega = res_ent.get("label", "")
+                coord_entrega, label_entrega = _ler_busca(res_ent)
             else:
                 label_entrega = st.text_input("Endereço de Entrega")
         num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
-             
+
         km_desloc = 0.0
         km_entrega_auto = 6.0
         tempo_total_min = 0
@@ -269,7 +273,7 @@ with tab_sim:
                     st.caption(f"Deslocamento até Retirada: **{d_desl} km** (~{t_desl} min)")
 
         col_o1, col_o2, col_o3 = st.columns(3)
-        km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5)
+        km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
         valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=2.0, step=0.25)
         taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=8.0, step=1.0)
 
@@ -304,6 +308,7 @@ with tab_sim:
         st.code(msg_whats, language="markdown")
         link_whats = f"https://wa.me{urllib.parse.quote(msg_whats)}"
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
+
         
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
