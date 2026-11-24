@@ -249,3 +249,28 @@ def gerar_texto_whatsapp_rota(
     )
     link = f"https://whatsapp.com{urllib.parse.quote(texto)}"
     return texto, link
+def buscar_nomes_searchbox(termo: str) -> list[tuple[str, dict]]:
+    itens = buscar_enderecos_autocomplete(termo, "Araras", "SP")
+    return [(item["label"], item) for item in itens]
+
+
+def reverso_gps_nominatim(lat: float, lon: float) -> str:
+    try:
+        resp = requests.get(
+            "https://openstreetmap.org",
+            params={"lat": lat, "lon": lon, "format": "json"},
+            headers=HEADERS_HTTP,
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            addr = resp.json().get("address", {})
+            rua = addr.get("road") or addr.get("pedestrian") or ""
+            numero = addr.get("house_number") or ""
+            bairro = addr.get("suburb") or addr.get("neighbourhood") or ""
+            cidade = addr.get("city") or addr.get("town") or "Araras"
+            partes = [p for p in [f"{rua} {numero}".strip(), bairro, cidade] if p]
+            if partes:
+                return " - ".join(partes)
+    except Exception:
+        pass
+    return f"GPS ({lat:.5f}, {lon:.5f})"
