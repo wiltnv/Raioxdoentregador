@@ -214,3 +214,4 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
             continue
 
     return {"erro": f"Falha ao processar áudio: {ultimo_erro}"}
+
