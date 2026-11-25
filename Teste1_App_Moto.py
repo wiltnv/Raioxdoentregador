@@ -139,6 +139,27 @@ with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manu
                         st.success("Turno salvo na nuvem!")
                         st.rerun()
 
+            elif tipo_v == "manutencao":
+                cv1, cv2, cv3 = st.columns(3)
+                v_comp = cv1.text_input("Serviço / Peça", value=str(voz_res.get("componente") or "Manutenção Geral"), key="v_comp")
+                v_ofic = cv2.text_input("Oficina", value=str(voz_res.get("posto_ou_oficina") or "Não informada"), key="v_ofic")
+                v_tot_m = cv3.number_input("Valor Total (R$)", value=float(voz_res.get("valor_total") or 0.0), step=5.0, key="v_tot_m")
+                v_odo_m = st.number_input("Hodômetro (km)", value=odo_v, step=1, key="v_odo_m")
+                if st.button("✅ Confirmar Manutenção por Voz", type="primary", use_container_width=True):
+                    db["manutencoes"].append({
+                        "data": str(date.today()), "moto_id": moto_ativa["id"], "hodometro": int(v_odo_m),
+                        "tipo": "preventiva", "componente": v_comp.strip() or "Serviço via Voz",
+                        "oficina": v_ofic.strip() or "Não informada", "valor_peca": float(v_tot_m),
+                        "valor_total": float(v_tot_m), "obs": str(voz_res.get("resumo") or "Registrado por voz")
+                    })
+                    if int(v_odo_m) > int(moto_ativa["hodometro"]):
+                        moto_ativa["hodometro"] = int(v_odo_m)
+                    save_state(user_key, db)
+                    st.session_state.pop("voz_resultado", None)
+                    st.success("Manutenção salva na nuvem!")
+                    st.rerun()
+
+
 tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
     "📊 1. Meu Dia",
     "⚡ 2. Simular & Orçar",
