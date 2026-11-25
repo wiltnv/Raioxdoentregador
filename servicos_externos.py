@@ -194,7 +194,25 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
     ultimo_erro = ""
 
     for mod in modelos:
-        dominio = ".".join(["generativelanguage", "googleapis", "com"])
+    dominio = ".".join(["generativelanguage", "googleapis", "com"])
+    modelos = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+
+    try:
+        url_list = f"https://{dominio}/v1beta/models?key={api_key}"
+        with urllib.request.urlopen(urllib.request.Request(url_list), timeout=8) as r_list:
+            m_data = json.loads(r_list.read().decode("utf-8"))
+            dinamicos = [
+                m["name"].replace("models/", "")
+                for m in m_data.get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", []) and "flash" in m.get("name", "")
+            ]
+            if dinamicos:
+                modelos = dinamicos + modelos
+    except Exception:
+        pass
+
+    erros = []
+    for mod in dict.fromkeys(modelos):
         url = f"https://{dominio}/v1beta/models/{mod}:generateContent?key={api_key}"
         try:
             req = urllib.request.Request(
@@ -212,10 +230,11 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
                 return json.loads(txt)
         except urllib.error.HTTPError as he:
             detalhe = he.read().decode("utf-8", errors="ignore")
-            ultimo_erro = f"HTTP {he.code} ({mod}): {detalhe[:180]}"
+            erros.append(f"{mod} -> HTTP {he.code}: {detalhe[:120]}")
             continue
         except Exception as e:
-            ultimo_erro = str(e)
+            erros.append(f"{mod} -> {e}")
             continue
 
-    return {"erro": f"Falha ao processar áudio: {ultimo_erro}"}
+    return {"erro": " | ".join(erros[:2])}
+
