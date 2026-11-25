@@ -189,20 +189,28 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
         "generationConfig": {"temperature": 0.1}
     }
 
-    url = "https://googleapis.com" + f"/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            cand = next(iter(data.get("candidates") or []), {})
-            part = next(iter(cand.get("content", {}).get("parts") or []), {})
-            txt = part.get("text", "").strip()
-            txt = txt.replace("```json", "").replace("```", "").strip()
-            return json.loads(txt)
-    except Exception as e:
-        return {"erro": f"Falha ao processar áudio: {e}"}
+    host_api = "generativelanguage" + ".googleapis.com"
+    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    ultimo_erro = ""
+
+    for mod in modelos:
+        url = f"https://{host_api}/v1beta/models/{mod}:generateContent?key={api_key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                cand = next(iter(data.get("candidates") or []), {})
+                part = next(iter(cand.get("content", {}).get("parts") or []), {})
+                txt = part.get("text", "").strip()
+                txt = txt.replace("```json", "").replace("```", "").strip()
+                return json.loads(txt)
+        except Exception as e:
+            ultimo_erro = str(e)
+            continue
+
+    return {"erro": f"Falha ao processar áudio: {ultimo_erro}"}
