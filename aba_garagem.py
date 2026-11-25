@@ -251,3 +251,25 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km)
                     save_state(user_key, db)
                     st.success("Nova moto cadastrada e ativada!")
                     st.rerun()
+
+            if len(db["motos"]) > 1:
+            st.divider()
+            st.subheader("🗑️ Excluir Moto Cadastrada")
+            opcoes_ex_moto = {
+                m["id"]: f"{m['apelido']} ({m['modelo']} • {int(m['hodometro']):,} km)"
+                for m in db["motos"]
+            }
+            moto_del_id = st.selectbox(
+                "Selecione a moto para remover:",
+                options=list(opcoes_ex_moto.keys()),
+                format_func=lambda mid: opcoes_ex_moto[mid],
+                key="sel_excluir_moto",
+            )
+            if st.button("Confirmar Exclusão da Moto", type="primary", key="btn_excluir_moto"):
+                db["motos"] = [m for m in db["motos"] if m["id"] != moto_del_id]
+                if db["moto_ativa_id"] == moto_del_id:
+                    primeiro_m = next(iter(db["motos"]))
+                    db["moto_ativa_id"] = primeiro_m["id"]
+                save_state(user_key, db)
+                st.warning("Moto removida com sucesso!")
+                st.rerun()
