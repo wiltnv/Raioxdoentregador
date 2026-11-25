@@ -236,7 +236,7 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km)
 
         st.divider()
         st.subheader("➕ Cadastrar Outra Moto (Multi-Moto)")
-        with st.form("form_add_moto"):
+                with st.form("form_add_moto"):
             am1, am2, am3 = st.columns([1.2, 1.5, 1])
             apelido_nova = am1.text_input("Apelido (ex: CG Reserva)")
             modelo_cat = am2.selectbox("Modelo Pré-Calibrado", options=list(CATALOGO_MOTOS.keys()))
@@ -252,7 +252,7 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km)
                     st.success("Nova moto cadastrada e ativada!")
                     st.rerun()
 
-            if len(db["motos"]) > 1:
+        if len(db["motos"]) > 1:
             st.divider()
             st.subheader("🗑️ Excluir Moto Cadastrada")
             opcoes_ex_moto = {
