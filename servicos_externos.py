@@ -5,6 +5,7 @@ import re
 import math
 import urllib.request
 import urllib.parse
+import base64
 from calculos_moto import get_default_data, migrate_data
 
 try:
@@ -158,3 +159,50 @@ def calcular_rota_osrm(coord1, coord2):
     dist_est = round(2 * r_terra * math.asin(math.sqrt(a)) * 1.32, 2)
     tempo_est = max(2, round((dist_est / 35.0) * 60))
     return dist_est, tempo_est
+    
+def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual=0):
+    api_key = ""
+    try:
+        api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+    except Exception:
+        pass
+    if not api_key:
+        return {"erro": "Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit."}
+
+    prompt = (
+        f"Você é o assistente de voz de um motoboy. Hodômetro atual da moto: {hodometro_atual} km. "
+        "Ouça o áudio e identifique qual lançamento ele quer fazer: 'abastecimento', 'turno' ou 'manutencao'. "
+        "Responda APENAS com um JSON válido (sem markdown) no formato: "
+        '{"tipo": "abastecimento|turno|manutencao", "hodometro": int, "litros": float, "valor_total": float, '
+        '"posto_ou_oficina": str, "ganho_app": float, "ganho_estab": float, "estabelecimento": str, "componente": str, "resumo": str}. '
+        "Se algum número não foi dito, use 0. Se falou só o valor total em reais de gasolina e os litros, preencha ambos."
+    )
+
+    b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": mime_type or "audio/wav", "data": b64_audio}}
+            ]
+        }],
+        "generationConfig": {"temperature": 0.1}
+    }
+
+    url = "https://googleapis.com" + f"/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            cand = next(iter(data.get("candidates") or []), {})
+            part = next(iter(cand.get("content", {}).get("parts") or []), {})
+            txt = part.get("text", "").strip()
+            txt = txt.replace("```json", "").replace("```", "").strip()
+            return json.loads(txt)
+    except Exception as e:
+        return {"erro": f"Falha ao processar áudio: {e}"}
