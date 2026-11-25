@@ -190,10 +190,6 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
         "generationConfig": {"temperature": 0.1}
     }
 
-    modelos = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-    ultimo_erro = ""
-
-    for mod in modelos:
     dominio = ".".join(["generativelanguage", "googleapis", "com"])
     modelos = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
 
@@ -237,4 +233,3 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
             continue
 
     return {"erro": " | ".join(erros[:2])}
-
