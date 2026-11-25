@@ -5,6 +5,7 @@ import re
 import math
 import urllib.request
 import urllib.parse
+import urllib.error
 import base64
 from calculos_moto import get_default_data, migrate_data
 
