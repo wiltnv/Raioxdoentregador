@@ -78,6 +78,67 @@ with st.expander("💡 Como funciona o Raio-X? (Guia Rápido em 3 Passos)"):
     ])
     st.markdown(guia_txt)
 
+with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manutenção)"):
+    audio_gravado = st.audio_input("Toque no microfone e fale (ex: 'Coloquei 10 litros, deu 60 reais, hodômetro 81350')", key="voz_cmd")
+    if audio_gravado is not None:
+        audio_bytes = audio_gravado.getvalue()
+        if st.session_state.get("ultimo_audio_len") != len(audio_bytes):
+            with st.spinner("Ouvindo e interpretando lançamento..."):
+                res_ia = interpretar_audio_gemini(audio_bytes, audio_gravado.type, int(moto_ativa["hodometro"]))
+                st.session_state["voz_resultado"] = res_ia
+                st.session_state["ultimo_audio_len"] = len(audio_bytes)
+
+    voz_res = st.session_state.get("voz_resultado")
+    if isinstance(voz_res, dict):
+        if "erro" in voz_res:
+            st.error(voz_res["erro"])
+        else:
+            st.info(f"🤖 **Entendi:** {voz_res.get('resumo', 'Lançamento identificado')} (Tipo: **{voz_res.get('tipo', '').upper()}**)")
+            tipo_v = voz_res.get("tipo", "")
+            odo_v = int(voz_res.get("hodometro") or moto_ativa["hodometro"])
+
+            if tipo_v == "abastecimento":
+                cv1, cv2, cv3 = st.columns(3)
+                v_litros = cv1.number_input("Litros", value=float(voz_res.get("litros") or 10.0), step=0.5, key="v_lit")
+                v_valor = cv2.number_input("Valor Total (R$)", value=float(voz_res.get("valor_total") or 59.90), step=1.0, key="v_val")
+                v_odo = cv3.number_input("Hodômetro", value=odo_v, step=1, key="v_odo_a")
+                if st.button("✅ Confirmar Abastecimento por Voz", type="primary", use_container_width=True):
+                    db["abastecimentos"].append({
+                        "data": str(date.today()), "moto_id": moto_ativa["id"], "hodometro": int(v_odo),
+                        "litros": float(v_litros), "valor_pago": float(v_valor),
+                        "preco_litro": round(v_valor / max(v_litros, 0.1), 2),
+                        "posto": voz_res.get("posto_ou_oficina", "Via Voz")
+                    })
+                    if int(v_odo) > int(moto_ativa["hodometro"]):
+                        moto_ativa["hodometro"] = int(v_odo)
+                    save_state(user_key, db)
+                    st.session_state.pop("voz_resultado", None)
+                    st.success("Abastecimento salvo na nuvem!")
+                    st.rerun()
+
+            elif tipo_v == "turno":
+                cv1, cv2, cv3 = st.columns(3)
+                v_km_fim = cv1.number_input("Km Final", value=odo_v, step=1, key="v_kmf")
+                v_app = cv2.number_input("Apps (R$)", value=float(voz_res.get("ganho_app") or 0.0), step=5.0, key="v_app")
+                v_est = cv3.number_input("Estab. (R$)", value=float(voz_res.get("ganho_estab") or 0.0), step=5.0, key="v_est")
+                if st.button("✅ Confirmar Turno por Voz", type="primary", use_container_width=True):
+                    dist_v = int(v_km_fim) - int(moto_ativa["hodometro"])
+                    if dist_v <= 0:
+                        st.error("Km Final precisa ser maior que o hodômetro atual.")
+                    else:
+                        db["turnos"].append({
+                            "data": str(date.today()), "moto_id": moto_ativa["id"],
+                            "km_ini": int(moto_ativa["hodometro"]), "km_fim": int(v_km_fim), "km": dist_v,
+                            "ganho_app": float(v_app), "estabelecimento": voz_res.get("estabelecimento") or "Via Voz",
+                            "ganho_estab": float(v_est), "bruto": float(v_app + v_est),
+                            "extras": 0.0, "custo_km": round(custo_total_km, 4)
+                        })
+                        moto_ativa["hodometro"] = int(v_km_fim)
+                        save_state(user_key, db)
+                        st.session_state.pop("voz_resultado", None)
+                        st.success("Turno salvo na nuvem!")
+                        st.rerun()
+
 tab_hoje, tab_sim, tab_garagem, tab_clt = st.tabs([
     "📊 1. Meu Dia",
     "⚡ 2. Simular & Orçar",
