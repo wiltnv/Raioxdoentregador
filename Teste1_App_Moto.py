@@ -4,7 +4,7 @@ import urllib.parse
 from datetime import date, datetime
 from catalogo_motos import ESTABELECIMENTOS_LISTA, CATALOGO_MOTOS, criar_moto_do_catalogo
 from calculos_moto import DATA_INICIO_CICLO, PISO_CLT_MENSAL, META_CLT_DIARIA, migrate_data, calc_custos_moto
-from servicos_externos import load_state, save_state, buscar_enderecos_online, calcular_rota_osrm
+from servicos_externos import load_state, save_state, buscar_enderecos_online, calcular_rota_osrm, interpretar_audio_gemini
 
 try:
     from streamlit_searchbox import st_searchbox
