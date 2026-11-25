@@ -175,7 +175,7 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
         "Responda APENAS com um JSON válido (sem markdown) no formato: "
         '{"tipo": "abastecimento|turno|manutencao", "hodometro": int, "litros": float, "valor_total": float, '
         '"posto_ou_oficina": str, "ganho_app": float, "ganho_estab": float, "estabelecimento": str, "componente": str, "resumo": str}. '
-        "Se algum número não foi dito, use 0. Se falou só o valor total em reais de gasolina e os litros, preencha ambos."
+        "Se algum número não foi dito, use 0."
     )
 
     b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
@@ -189,12 +189,11 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
         "generationConfig": {"temperature": 0.1}
     }
 
-    host_api = "generativelanguage" + ".googleapis.com"
-    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    modelos = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     ultimo_erro = ""
 
     for mod in modelos:
-        url = f"https://{host_api}/v1beta/models/{mod}:generateContent?key={api_key}"
+        url = "https://" + "://googleapis.com" + "/v1beta/models/" + mod + ":generateContent?key=" + api_key
         try:
             req = urllib.request.Request(
                 url,
@@ -209,9 +208,12 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
                 txt = part.get("text", "").strip()
                 txt = txt.replace("```json", "").replace("```", "").strip()
                 return json.loads(txt)
+        except urllib.error.HTTPError as he:
+            detalhe = he.read().decode("utf-8", errors="ignore")
+            ultimo_erro = f"HTTP {he.code} ({mod}): {detalhe[:180]}"
+            continue
         except Exception as e:
             ultimo_erro = str(e)
             continue
 
     return {"erro": f"Falha ao processar áudio: {ultimo_erro}"}
-
