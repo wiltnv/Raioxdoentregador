@@ -193,7 +193,8 @@ def interpretar_audio_gemini(audio_bytes, mime_type="audio/wav", hodometro_atual
     ultimo_erro = ""
 
     for mod in modelos:
-        url = "https://" + "://googleapis.com" + "/v1beta/models/" + mod + ":generateContent?key=" + api_key
+        dominio = ".".join(["generativelanguage", "googleapis", "com"])
+        url = f"https://{dominio}/v1beta/models/{mod}:generateContent?key={api_key}"
         try:
             req = urllib.request.Request(
                 url,
