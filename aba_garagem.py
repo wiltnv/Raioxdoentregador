@@ -4,7 +4,7 @@ from datetime import date
 from catalogo_motos import CATALOGO_MOTOS, criar_moto_do_catalogo
 from servicos_externos import save_state
 
-def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel="autonomo"):
+def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel="autonomo", empresa_info=None):
     if papel == "piloto":
         sub_pecas, sub_abast, sub_manut = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina"])
         sub_config = None
@@ -147,9 +147,10 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
 
     if sub_config is not None:
         opcoes_pil = {"": "🔓 Livre (Qualquer Piloto da Frota)"}
-        if papel == "gestor" and moto_ativa.get("empresa_id"):
+        emp_id = (empresa_info or {}).get("id") or moto_ativa.get("empresa_id")
+        if papel == "gestor" and emp_id:
             from auth_manager import listar_pilotos_empresa
-            for p_item in listar_pilotos_empresa(moto_ativa["empresa_id"]):
+            for p_item in listar_pilotos_empresa(emp_id):
                 opcoes_pil[p_item["email"]] = f"🛵 {p_item['nome']} ({p_item['email']})"
 
         with sub_config:
