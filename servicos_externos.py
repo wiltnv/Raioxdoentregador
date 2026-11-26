@@ -38,8 +38,9 @@ def load_state(user_key):
             if primeiro:
                 return migrate_data(primeiro["state_json"]), True
             novo_estado = get_default_data()
-            novo_estado["motos"][0]["apelido"] = "Moto Principal"
-            novo_estado["motos"][0]["hodometro"] = 0
+            moto_inicial = next(iter(novo_estado["motos"]))
+            moto_inicial["apelido"] = "Moto Principal"
+            moto_inicial["hodometro"] = 0
             novo_estado["turnos"] = []
             novo_estado["abastecimentos"] = []
             novo_estado["manutencoes"] = []
