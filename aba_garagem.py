@@ -11,16 +11,9 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
     else:
         sub_pecas, sub_abast, sub_manut, sub_config = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina", "⚙️ Configurar Moto"])
 
-    pecas_raw = moto_ativa.get("pecas")
-    if isinstance(pecas_raw, list):
-        moto_ativa["pecas"] = {
-            p.get("nome", f"Peça {i+1}"): p
-            for i, p in enumerate(pecas_raw) if isinstance(p, dict)
-        }
-    elif not isinstance(pecas_raw, dict) or not pecas_raw:
+    if not isinstance(moto_ativa.get("pecas"), list) or not moto_ativa.get("pecas"):
         moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], next(iter(CATALOGO_MOTOS.keys())), int(moto_ativa.get("hodometro", 0)))
-        raw_p = moto_padrao.get("pecas", {})
-        moto_ativa["pecas"] = {p["nome"]: p for p in raw_p} if isinstance(raw_p, list) else dict(raw_p)
+        moto_ativa["pecas"] = moto_padrao["pecas"]
 
     with sub_pecas:
         st.subheader(f"Painel de Desgaste — {moto_ativa['apelido']}")
@@ -30,11 +23,11 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             g2.metric("Reserva Peças+Fixos / Km", f"R$ {custo_reserva_km:.3f}")
             g3.metric("Total / Km", f"R$ {custo_gas_km + custo_reserva_km:.3f}")
 
-        pecas = moto_ativa["pecas"]
-        for nome_p, info_p in pecas.items():
-            ult_km_val = int(info_p.get("ultimo_km", info_p.get("ultima_troca", 0)))
-            vida_val = int(info_p.get("vida_util", 1000))
-            custo_val = float(info_p.get("custo", info_p.get("valor", 0.0)))
+        for idx, info_p in enumerate(moto_ativa["pecas"]):
+            nome_p = info_p.get("nome", f"Peça {idx + 1}")
+            ult_km_val = int(info_p.get("ultima_troca", 0))
+            vida_val = int(info_p.get("intervalo", 1000))
+            custo_val = float(info_p.get("custo", 0.0))
 
             km_rodado_p = max(0, int(moto_ativa.get("hodometro", 0)) - ult_km_val)
             vida_p = max(1, vida_val)
@@ -57,13 +50,12 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             if papel != "piloto":
                 with st.expander(f"Editar parâmetro: {nome_p}"):
                     ep1, ep2, ep3 = st.columns(3)
-                    novo_custo_p = ep1.number_input("Custo Troca (R$)", value=custo_val, step=5.0, key=f"c_{moto_ativa['id']}_{nome_p}")
-                    nova_vida_p = ep2.number_input("Vida Útil (km)", value=vida_val, step=500, key=f"v_{moto_ativa['id']}_{nome_p}")
-                    novo_ult_p = ep3.number_input("Última Troca (km)", value=ult_km_val, step=100, key=f"u_{moto_ativa['id']}_{nome_p}")
-                    if st.button("Salvar Parâmetro", key=f"btn_{moto_ativa['id']}_{nome_p}"):
+                    novo_custo_p = ep1.number_input("Custo Troca (R$)", value=custo_val, step=5.0, key=f"c_{moto_ativa['id']}_{idx}")
+                    nova_vida_p = ep2.number_input("Vida Útil (km)", value=vida_val, step=500, key=f"v_{moto_ativa['id']}_{idx}")
+                    novo_ult_p = ep3.number_input("Última Troca (km)", value=ult_km_val, step=100, key=f"u_{moto_ativa['id']}_{idx}")
+                    if st.button("Salvar Parâmetro", key=f"btn_{moto_ativa['id']}_{idx}"):
                         info_p["custo"] = float(novo_custo_p)
-                        info_p["vida_util"] = int(nova_vida_p)
-                        info_p["ultimo_km"] = int(novo_ult_p)
+                        info_p["intervalo"] = int(nova_vida_p)
                         info_p["ultima_troca"] = int(novo_ult_p)
                         save_state(user_key, db)
                         st.success(f"{nome_p} atualizado!")
@@ -113,7 +105,8 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             st.dataframe(pd.DataFrame(abast_moto)[["data", "hodometro", "litros", "valor_pago", "preco_litro", "posto"]], use_container_width=True, hide_index=True)
     with sub_manut:
         st.subheader("Registrar Serviço / Troca de Peça")
-        opcoes_comp = list(moto_ativa["pecas"].keys()) + ["Outro Serviço / Mão de Obra Avulsa"]
+        nomes_pecas = [p.get("nome", "") for p in moto_ativa["pecas"] if p.get("nome")]
+        opcoes_comp = nomes_pecas + ["Outro Serviço / Mão de Obra Avulsa"]
         with st.form("form_manutencao"):
             mn1, mn2, mn3 = st.columns(3)
             data_mn = mn1.date_input("Data", value=date.today())
@@ -135,11 +128,12 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                     "tipo": "preventiva", "componente": comp_mn, "oficina": oficina_mn,
                     "valor_peca": float(val_peca_mn), "valor_total": float(total_mn), "obs": obs_mn
                 })
-                if resetar_ciclo and comp_mn in moto_ativa["pecas"]:
-                    moto_ativa["pecas"][comp_mn]["ultimo_km"] = int(odo_mn)
-                    moto_ativa["pecas"][comp_mn]["ultima_troca"] = int(odo_mn)
-                    if total_mn > 0:
-                        moto_ativa["pecas"][comp_mn]["custo"] = float(total_mn)
+                if resetar_ciclo:
+                    for p in moto_ativa["pecas"]:
+                        if p.get("nome") == comp_mn:
+                            p["ultima_troca"] = int(odo_mn)
+                            if total_mn > 0:
+                                p["custo"] = float(total_mn)
                 if odo_mn > int(moto_ativa.get("hodometro", 0)):
                     moto_ativa["hodometro"] = int(odo_mn)
                 save_state(user_key, db)
