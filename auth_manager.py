@@ -103,13 +103,14 @@ def render_tela_login():
     st.title("🏍️ Raio-X do Entregador")
     st.caption("Gestão inteligente de ganhos, custos reais por km e frotas.")
 
-    tab_entrar, tab_criar, tab_rapido = st.tabs(["🔑 Entrar", "✨ Criar Conta", "⚡ Acesso Rápido"])
+    modo_tela = st.session_state.get("auth_modo", "login")
 
-    with tab_entrar:
+    if modo_tela == "login":
+        st.subheader("🔑 Entrar na sua conta")
         with st.form("form_login_v3"):
             l_email = st.text_input("E-mail:", placeholder="seuemail@exemplo.com")
             l_pin = st.text_input("PIN de Acesso (4 a 6 números):", type="password", max_chars=6)
-            if st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True):
+            if st.form_submit_button("Entrar", type="primary", use_container_width=True):
                 perfil, erro = autenticar_usuario(l_email, l_pin)
                 if erro:
                     st.error(erro)
@@ -118,13 +119,22 @@ def render_tela_login():
                     st.session_state.pop("db", None)
                     st.rerun()
 
-    with tab_criar:
+        col_b1, col_b2 = st.columns(2)
+        if col_b1.button("✨ Não tem conta? Criar Cadastro", use_container_width=True):
+            st.session_state["auth_modo"] = "cadastro"
+            st.rerun()
+        if col_b2.button("⚡ Acesso Rápido (Teste)", use_container_width=True):
+            st.session_state["auth_modo"] = "rapido"
+            st.rerun()
+
+    elif modo_tela == "cadastro":
+        st.subheader("✨ Criar Nova Conta")
         papel_esc = st.radio(
-            "Como você vai usar o app?",
+            "Perfil de acesso:",
             [
-                "🏍️ Entregador Autônomo (Uso Individual)",
-                "🏢 Gestor / Empresa (Gerenciar Frota ou Loja)",
-                "🛵 Piloto de Empresa (Tenho Código de Convite)"
+                "🏍️ Entregador Autônomo (Individual)",
+                "🏢 Gestor / Empresa (Frota ou Loja)",
+                "🛵 Piloto de Empresa (Código de Convite)"
             ],
             key="radio_papel_cadastro"
         )
@@ -142,20 +152,24 @@ def render_tela_login():
             elif papel_cod == "piloto":
                 c_convite = st.text_input("Código de Convite da Empresa (ex: FROTA-1234):")
 
-            if st.form_submit_button("Criar Conta e Acessar", type="primary", use_container_width=True):
+            if st.form_submit_button("Finalizar Cadastro e Entrar", type="primary", use_container_width=True):
                 perfil, erro = cadastrar_usuario(c_nome, c_email, c_pin, papel_cod, c_empresa, c_convite)
                 if erro:
                     st.error(erro)
                 else:
                     st.session_state["perfil_logado"] = perfil
+                    st.session_state["auth_modo"] = "login"
                     st.session_state.pop("db", None)
-                    st.success("Conta criada com sucesso!")
                     st.rerun()
 
-    with tab_rapido:
-        st.caption("Para testes rápidos sem cadastro de e-mail:")
+        if st.button("⬅️ Já tenho conta (Voltar para Login)", use_container_width=True):
+            st.session_state["auth_modo"] = "login"
+            st.rerun()
+
+    else:
+        st.subheader("⚡ Acesso Rápido sem Cadastro")
         cod_legado = st.text_input("Código da Conta de Teste:", value="beta_teste")
-        if st.button("Entrar no Modo Rápido", use_container_width=True):
+        if st.button("Entrar no Modo Rápido", type="primary", use_container_width=True):
             st.session_state["perfil_logado"] = {
                 "id": "modo_rapido",
                 "nome": cod_legado.strip() or "Visitante",
@@ -165,4 +179,7 @@ def render_tela_login():
                 "state_key": cod_legado.strip() or "beta_teste"
             }
             st.session_state.pop("db", None)
+            st.rerun()
+        if st.button("⬅️ Voltar para Login", use_container_width=True):
+            st.session_state["auth_modo"] = "login"
             st.rerun()
