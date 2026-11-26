@@ -30,6 +30,7 @@ papel = perfil.get("papel", "autonomo")
 empresa_info = perfil.get("empresa")
 user_key = perfil.get("state_key", "beta_teste")
 nome_usuario = perfil.get("nome", "Entregador")
+email_usuario = perfil.get("email", "")
 
 if st.secrets.get("APP_ENV", "prod") == "staging":
     st.warning("🧪 **AMBIENTE BETA (V3.0)** — Você está testando a nova versão com dados isolados.")
@@ -58,16 +59,34 @@ else:
 
 db = st.session_state.db
 
-motos_dict = {m["id"]: m for m in db["motos"]}
-col_t1, col_t2, col_t3 = st.columns([1.5, 1, 0.55])
+if empresa_info:
+    for m_item in db["motos"]:
+        m_item["empresa_id"] = empresa_info.get("id")
+
+motos_visiveis = db["motos"]
+if papel == "piloto":
+    atribuidas = [m for m in db["motos"] if m.get("piloto_email") == email_usuario]
+    motos_visiveis = atribuidas if atribuidas else db["motos"][:1]
+
+motos_dict = {m["id"]: m for m in motos_visiveis}
+if db["moto_ativa_id"] not in motos_dict:
+    db["moto_ativa_id"] = next(iter(motos_dict.keys()))
+
+col_t1, col_t2, col_t3 = st.columns([1.6, 1, 0.55])
 col_t1.title("🏍️ Raio-X")
-moto_escolhida_id = col_t2.selectbox(
-    "Moto Ativa:",
-    options=list(motos_dict.keys()),
-    format_func=lambda mid: motos_dict[mid]["apelido"],
-    index=list(motos_dict.keys()).index(db["moto_ativa_id"]),
-    label_visibility="collapsed"
-)
+
+if papel == "piloto" and len(motos_visiveis) <= 1:
+    col_t2.markdown(f"**🏍️ {motos_dict[db['moto_ativa_id']]['apelido']}**")
+    moto_escolhida_id = db["moto_ativa_id"]
+else:
+    moto_escolhida_id = col_t2.selectbox(
+        "Moto Ativa:",
+        options=list(motos_dict.keys()),
+        format_func=lambda mid: motos_dict[mid]["apelido"],
+        index=list(motos_dict.keys()).index(db["moto_ativa_id"]),
+        label_visibility="collapsed"
+    )
+
 if col_t3.button("🚪 Sair", use_container_width=True, help="Sair / Trocar Usuário"):
     st.session_state.pop("perfil_logado", None)
     st.session_state.pop("db", None)
@@ -81,10 +100,15 @@ if moto_escolhida_id != db["moto_ativa_id"]:
 moto_ativa = motos_dict[db["moto_ativa_id"]]
 custo_gas_km, custo_reserva_km, custo_total_km = calc_custos_moto(moto_ativa)
 
-st.caption(
-    f"**{moto_ativa['apelido']}** • Hodômetro: **{int(moto_ativa['hodometro']):,} km** • "
-    f"Custo Real: **R$ {custo_total_km:.3f}/km** (Gasolina R$ {custo_gas_km:.3f} + Reserva R$ {custo_reserva_km:.3f})"
-)
+if papel == "piloto":
+    st.caption(f"Hodômetro: **{int(moto_ativa['hodometro']):,} km**")
+else:
+    st.caption(
+        f"**{moto_ativa['apelido']}** • Hodômetro: **{int(moto_ativa['hodometro']):,} km** • "
+        f"Custo Real: **R$ {custo_total_km:.3f}/km** (Gasolina R$ {custo_gas_km:.3f} + Reserva R$ {custo_reserva_km:.3f})"
+    )
+if papel == "gestor" and empresa_info:
+    st.info(f"🏢 **{empresa_info.get('nome_empresa')}** • Código de Convite para Pilotos: **`{empresa_info.get('codigo_convite')}`**")
 
 with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manutenção)"):
     audio_gravado = st.audio_input("Toque no microfone e fale (ex: 'Coloquei 10 litros, deu 60 reais, hodômetro 81350')", key="voz_cmd")
@@ -182,9 +206,13 @@ else:
     ])
 
 with tab_hoje:
-    col_f1, col_f2 = st.columns(2)
-    filtro_visao = col_f1.radio("Moto:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
-    filtro_periodo = col_f2.radio("Período:", [f"Ciclo Atual (Desde {DATA_INICIO_CICLO})", "Todos os Registros"], horizontal=True)
+    if papel == "piloto":
+        filtro_visao = "Apenas Moto Ativa"
+        filtro_periodo = st.radio("Período:", [f"Ciclo Atual (Desde {DATA_INICIO_CICLO})", "Todos os Registros"], horizontal=True)
+    else:
+        col_f1, col_f2 = st.columns(2)
+        filtro_visao = col_f1.radio("Moto:", ["Apenas Moto Ativa", "Todas as Motos"], horizontal=True)
+        filtro_periodo = col_f2.radio("Período:", [f"Ciclo Atual (Desde {DATA_INICIO_CICLO})", "Todos os Registros"], horizontal=True)
 
     turnos_filtrados = [
         t for t in db["turnos"]
@@ -207,12 +235,12 @@ with tab_hoje:
 
     lucro_liquido = total_bruto - total_gas - total_reserva - total_extras
 
-    c1, c2, c3 = st.columns(3)
     if papel == "piloto":
+        c1, c2 = st.columns(2)
         c1.metric("Meus Ganhos Brutos", f"R$ {total_bruto:.2f}")
-        c2.metric("Combustível Estimado", f"R$ {total_gas:.2f}")
-        c3.metric("Km Rodados", f"{total_km:,} km")
+        c2.metric("Km Rodados", f"{total_km:,} km")
     else:
+        c1, c2, c3 = st.columns(3)
         c1.metric("Lucro Líquido Real", f"R$ {lucro_liquido:.2f}")
         c2.metric("Faturamento Bruto", f"R$ {total_bruto:.2f}")
         c3.metric("Km Rodados", f"{total_km:,} km")
@@ -281,33 +309,38 @@ with tab_hoje:
                 opcoes_ex = [f"{i} | {t['data']} — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})" for i, t in enumerate(db["turnos"])]
                 sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
                 if st.button("Confirmar Exclusão do Turno", type="primary"):
-                    idx_rem = int(sel_ex.split(" | ")[0])
+                    idx_rem = int(sel_ex.split(" | "))
                     db["turnos"].pop(idx_rem)
                     save_state(user_key, db)
                     st.rerun()
 with tab_sim:
-    sub_app, sub_orc = st.tabs(["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"])
+    if papel == "piloto":
+        sub_app = None
+        sub_orc = st.container()
+    else:
+        sub_app, sub_orc = st.tabs(["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"])
 
-    with sub_app:
-        col_s1, col_s2 = st.columns(2)
-        val_corrida = col_s1.number_input("Valor Ofertado (R$)", min_value=0.0, value=12.0, step=0.5, key="app_val")
-        dist_corrida = col_s2.number_input("Distância Total até Entrega (km)", min_value=0.1, value=6.0, step=0.5, key="app_dist")
+    if sub_app is not None:
+        with sub_app:
+            col_s1, col_s2 = st.columns(2)
+            val_corrida = col_s1.number_input("Valor Ofertado (R$)", min_value=0.0, value=12.0, step=0.5, key="app_val")
+            dist_corrida = col_s2.number_input("Distância Total até Entrega (km)", min_value=0.1, value=6.0, step=0.5, key="app_dist")
 
-        custo_c = dist_corrida * custo_total_km
-        lucro_c = val_corrida - custo_c
-        liq_km = lucro_c / dist_corrida if dist_corrida > 0 else 0
+            custo_c = dist_corrida * custo_total_km
+            lucro_c = val_corrida - custo_c
+            liq_km = lucro_c / dist_corrida if dist_corrida > 0 else 0
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Lucro Líquido", f"R$ {lucro_c:.2f}")
-        m2.metric("Custo Moto", f"- R$ {custo_c:.2f}")
-        m3.metric("Líquido / Km", f"R$ {liq_km:.2f}/km")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Lucro Líquido", f"R$ {lucro_c:.2f}")
+            m2.metric("Custo Moto", f"- R$ {custo_c:.2f}")
+            m3.metric("Líquido / Km", f"R$ {liq_km:.2f}/km")
 
-        if liq_km >= 1.30:
-            st.success("✅ **CORRIDA BOA:** Acima da meta de rentabilidade líquida!")
-        elif liq_km >= 0.80:
-            st.warning("⚠️ **EMPATE / ATENÇÃO:** Margem apertada, avalie o trânsito.")
-        else:
-            st.error("🚨 **FURADA / PREJUÍZO:** Abaixo do mínimo viável.")
+            if liq_km >= 1.30:
+                st.success("✅ **CORRIDA BOA:** Acima da meta de rentabilidade líquida!")
+            elif liq_km >= 0.80:
+                st.warning("⚠️ **EMPATE / ATENÇÃO:** Margem apertada, avalie o trânsito.")
+            else:
+                st.error("🚨 **FURADA / PREJUÍZO:** Abaixo do mínimo viável.")
 
     with sub_orc:
         st.subheader("Cálculo de Rota e Orçamento")
@@ -340,28 +373,22 @@ with tab_sim:
                 st.warning("Pacote streamlit-js-eval não instalado.")
         elif modo_partida == "🏍️ Digitar Rua onde estou":
             if HAS_SEARCHBOX:
-                res_part = st_searchbox(buscar_enderecos_online, placeholder="Ex: Av. Loreto", key="sb_part")
+                res_part = st_searchbox(buscar_enderecos_online, placeholder="Ex: Av. Loreto, 500", key="sb_part")
                 coord_partida, _ = _ler_busca(res_part)
 
-        col_e1, col_e2 = st.columns([3, 1])
         coord_retirada, label_retirada = None, ""
-        with col_e1:
-            if HAS_SEARCHBOX:
-                res_ret = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Retirada (Rua, Comércio ou CEP)", key="sb_ret")
-                coord_retirada, label_retirada = _ler_busca(res_ret)
-            else:
-                label_retirada = st.text_input("Endereço de Retirada")
-        num_ret = col_e2.text_input("Nº / Compl. (Ret.)", key="num_ret")
+        if HAS_SEARCHBOX:
+            res_ret = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Retirada (Rua, Número, Comércio ou CEP)", key="sb_ret")
+            coord_retirada, label_retirada = _ler_busca(res_ret)
+        else:
+            label_retirada = st.text_input("Endereço de Retirada")
 
-        col_e3, col_e4 = st.columns([3, 1])
         coord_entrega, label_entrega = None, ""
-        with col_e3:
-            if HAS_SEARCHBOX:
-                res_ent = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Entrega (Rua, Comércio ou CEP)", key="sb_ent")
-                coord_entrega, label_entrega = _ler_busca(res_ent)
-            else:
-                label_entrega = st.text_input("Endereço de Entrega")
-        num_ent = col_e4.text_input("Nº / Compl. (Ent.)", key="num_ent")
+        if HAS_SEARCHBOX:
+            res_ent = st_searchbox(buscar_enderecos_online, placeholder="Endereço de Entrega (Rua, Número, Comércio ou CEP)", key="sb_ent")
+            coord_entrega, label_entrega = _ler_busca(res_ent)
+        else:
+            label_entrega = st.text_input("Endereço de Entrega")
 
         km_desloc = 0.0
         km_entrega_auto = 6.0
@@ -379,10 +406,25 @@ with tab_sim:
                     tempo_total_min += int(t_desl or 0)
                     st.caption(f"Deslocamento até Retirada: **{d_desl} km** (~{t_desl} min)")
 
-        col_o1, col_o2, col_o3 = st.columns(3)
-        km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
-        valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=2.0, step=0.25, key="orc_val_km")
-        taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=8.0, step=1.0, key="orc_taxa_min")
+        cfg_emp = db.setdefault("config_empresa", {"valor_km_cobrar": 2.0, "taxa_minima": 8.0})
+
+        if papel == "piloto":
+            km_entrega = st.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
+            valor_km_cobrar = float(cfg_emp.get("valor_km_cobrar", 2.0))
+            taxa_minima = float(cfg_emp.get("taxa_minima", 8.0))
+        else:
+            col_o1, col_o2, col_o3 = st.columns(3)
+            km_entrega = col_o1.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
+            valor_km_cobrar = col_o2.number_input("Cobrar por Km (R$)", min_value=0.5, value=float(cfg_emp.get("valor_km_cobrar", 2.0)), step=0.25, key="orc_val_km")
+            taxa_minima = col_o3.number_input("Taxa Mínima (R$)", min_value=0.0, value=float(cfg_emp.get("taxa_minima", 8.0)), step=1.0, key="orc_taxa_min")
+
+            if papel == "gestor" and (valor_km_cobrar != cfg_emp.get("valor_km_cobrar") or taxa_minima != cfg_emp.get("taxa_minima")):
+                if st.button("💾 Salvar Tabela de Preços Padrão para Toda a Frota", use_container_width=True):
+                    cfg_emp["valor_km_cobrar"] = float(valor_km_cobrar)
+                    cfg_emp["taxa_minima"] = float(taxa_minima)
+                    save_state(user_key, db)
+                    st.success("Tabela atualizada para todos os pilotos da empresa!")
+                    st.rerun()
 
         cobrar_desloc = st.checkbox("Incluir km de deslocamento até retirada no preço ao cliente", value=False, key="orc_chk_desl")
         km_cobrado = km_entrega + (km_desloc if cobrar_desloc else 0.0)
@@ -392,13 +434,16 @@ with tab_sim:
         custo_operacional_orc = km_rodado_real * custo_total_km
         lucro_orc = preco_cliente - custo_operacional_orc
 
-        oc1, oc2, oc3 = st.columns(3)
-        oc1.metric("Valor ao Cliente", f"R$ {preco_cliente:.2f}")
-        oc2.metric("Seu Custo Moto", f"- R$ {custo_operacional_orc:.2f}")
-        oc3.metric("Seu Lucro Líquido", f"R$ {lucro_orc:.2f}")
+        if papel == "piloto":
+            st.metric("Valor da Entrega ao Cliente", f"R$ {preco_cliente:.2f}")
+        else:
+            oc1, oc2, oc3 = st.columns(3)
+            oc1.metric("Valor ao Cliente", f"R$ {preco_cliente:.2f}")
+            oc2.metric("Seu Custo Moto", f"- R$ {custo_operacional_orc:.2f}")
+            oc3.metric("Seu Lucro Líquido", f"R$ {lucro_orc:.2f}")
 
-        txt_ret = f"{label_retirada} (Nº {num_ret})".strip() if (label_retirada and num_ret) else (label_retirada or num_ret or "Ponto de Coleta")
-        txt_ent = f"{label_entrega} (Nº {num_ent})".strip() if (label_entrega and num_ent) else (label_entrega or num_ent or "Destino")
+        txt_ret = label_retirada or "Ponto de Coleta"
+        txt_ent = label_entrega or "Destino"
         detalhe_km = f" (inclui {km_desloc:.1f} km deslocamento + {km_entrega:.1f} km entrega)" if (cobrar_desloc and km_desloc > 0) else ""
         detalhe_tempo = f" (aprox. {tempo_total_min} min)" if tempo_total_min > 0 else ""
 
@@ -420,7 +465,7 @@ from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
 
 with tab_garagem:
-    render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel)
+    render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel, empresa_info)
 
 if tab_clt is not None:
     with tab_clt:
