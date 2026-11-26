@@ -420,7 +420,7 @@ from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
 
 with tab_garagem:
-    render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km)
+    render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel)
 
 if tab_clt is not None:
     with tab_clt:
