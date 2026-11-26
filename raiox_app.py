@@ -160,7 +160,6 @@ with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manu
                     st.session_state.pop("voz_resultado", None)
                     st.success("Manutenção salva!")
                     st.rerun()
-
 if papel == "piloto":
     tab_hoje, tab_sim, tab_garagem = st.tabs([
         "📊 1. Meu Turno",
@@ -253,7 +252,33 @@ with tab_hoje:
                     save_state(user_key, db)
                     st.success(f"Turno salvo! +{dist} km ({local_reg}).")
                     st.rerun()
- 
+
+    if turnos_filtrados:
+        st.subheader("Histórico de Turnos")
+        rows = []
+        for t in turnos_filtrados:
+            m_ref = motos_dict.get(t.get("moto_id"), moto_ativa)
+            _, _, c_km_ref = calc_custos_moto(m_ref)
+            liq = t["bruto"] - (t["km"] * c_km_ref) - t.get("extras", 0.0)
+            row_item = {
+                "Data": t["data"], "Moto": m_ref["apelido"], "Origem": t["estabelecimento"],
+                "Km": t["km"], "Bruto (R$)": round(t["bruto"], 2)
+            }
+            if papel != "piloto":
+                row_item["Piloto"] = t.get("piloto", "-")
+                row_item["Líquido (R$)"] = round(liq, 2)
+            rows.append(row_item)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        if papel != "piloto":
+            with st.expander("🗑️ Excluir um turno lançado errado"):
+                opcoes_ex = [f"{i} | {t['data']} — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})" for i, t in enumerate(db["turnos"])]
+                sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
+                if st.button("Confirmar Exclusão do Turno", type="primary"):
+                    idx_rem = int(sel_ex.split(" | ")[0])
+                    db["turnos"].pop(idx_rem)
+                    save_state(user_key, db)
+                    st.rerun()
 with tab_sim:
     sub_app, sub_orc = st.tabs(["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"])
 
@@ -382,9 +407,9 @@ with tab_sim:
 
         st.caption("Toque no ícone no canto superior direito da caixa abaixo para copiar tudo com 1 clique:")
         st.code(msg_whats, language="markdown")
-        link_whats = f"https://wa.me/?text={urllib.parse.quote(msg_whats)}"
+        link_whats = "https://" + "wa.me/" + "?text=" + urllib.parse.quote(msg_whats)
         st.link_button("📲 Enviar Orçamento no WhatsApp", link_whats, type="primary", use_container_width=True)
-                
+
 from aba_garagem import render_aba_garagem
 from aba_clt import render_aba_clt
 
@@ -393,6 +418,4 @@ with tab_garagem:
 
 if tab_clt is not None:
     with tab_clt:
-    render_aba_clt(db, motos_dict, moto_ativa)
-
-
+        render_aba_clt(db, motos_dict, moto_ativa)
