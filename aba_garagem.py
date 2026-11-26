@@ -19,7 +19,13 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             g2.metric("Reserva Peças+Fixos / Km", f"R$ {custo_reserva_km:.3f}")
             g3.metric("Total / Km", f"R$ {custo_gas_km + custo_reserva_km:.3f}")
 
-        pecas = moto_ativa["pecas"]
+        pecas = moto_ativa.get("pecas")
+        if not isinstance(pecas, dict) or not pecas:
+            from catalogo_motos import CATALOGO_MOTOS
+            modelo_ref = next(iter(CATALOGO_MOTOS.values()))
+            pecas = {k: dict(v) for k, v in modelo_ref["pecas"].items()}
+            moto_ativa["pecas"] = pecas
+
         for nome_p, info_p in pecas.items():
             km_rodado_p = max(0, int(moto_ativa["hodometro"]) - int(info_p["ultimo_km"]))
             vida_p = max(1, int(info_p["vida_util"]))
@@ -33,11 +39,7 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             else:
                 status_icon = "✅ OK"
 
-            col_p1, col_p2, col_p3 = st.columns([2, 1, 1])
-            col_p1.markdown(f"**{nome_p}** ({status_icon})")
-            col_p2.caption(f"Rodou: {km_rodado_p:,} / {vida_p:,} km")
-            col_p3.caption(f"Resta: **{km_restante:,} km**")
-            st.progress(pct_uso)
+            col_p1, col_p2, col_p3 = st.columns([1.4, 1, 1])
 
             if papel != "piloto":
                 with st.expander(f"Editar parâmetro: {nome_p}"):
