@@ -146,6 +146,12 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             st.dataframe(pd.DataFrame(manut_moto)[["data", "hodometro", "componente", "oficina", "valor_total", "obs"]], use_container_width=True, hide_index=True)
 
     if sub_config is not None:
+        opcoes_pil = {"": "🔓 Livre (Qualquer Piloto da Frota)"}
+        if papel == "gestor" and moto_ativa.get("empresa_id"):
+            from auth_manager import listar_pilotos_empresa
+            for p_item in listar_pilotos_empresa(moto_ativa["empresa_id"]):
+                opcoes_pil[p_item["email"]] = f"🛵 {p_item['nome']} ({p_item['email']})"
+
         with sub_config:
             st.subheader(f"Parâmetros — {moto_ativa['apelido']}")
             with st.form("form_cfg_moto"):
@@ -157,10 +163,23 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                 novo_kml = cg4.number_input("Consumo Base (km/L)", value=float(moto_ativa.get("consumo_kml", 35.0)), step=0.5, format="%.1f")
                 novo_seg = cg5.number_input("Seguro Anual (R$)", value=float(moto_ativa.get("seguro_anual", 0.0)), step=10.0, format="%.2f")
                 novo_lic = cg6.number_input("IPVA/Licenc. (R$)", value=float(moto_ativa.get("licenciamento_anual", 0.0)), step=5.0, format="%.2f")
+
+                piloto_resp = moto_ativa.get("piloto_email", "")
+                if papel == "gestor":
+                    idx_pil = list(opcoes_pil.keys()).index(piloto_resp) if piloto_resp in opcoes_pil else 0
+                    piloto_resp = st.selectbox(
+                        "Colaborador Responsável por esta Moto:",
+                        options=list(opcoes_pil.keys()),
+                        format_func=lambda k: opcoes_pil[k],
+                        index=idx_pil,
+                        key="sel_piloto_cfg"
+                    )
+
                 if st.form_submit_button("Salvar Configurações da Moto", use_container_width=True):
                     moto_ativa.update({
                         "apelido": novo_apelido, "hodometro": int(novo_odo), "preco_gasolina": float(novo_gas),
-                        "consumo_kml": float(novo_kml), "seguro_anual": float(novo_seg), "licenciamento_anual": float(novo_lic)
+                        "consumo_kml": float(novo_kml), "seguro_anual": float(novo_seg), "licenciamento_anual": float(novo_lic),
+                        "piloto_email": piloto_resp
                     })
                     save_state(user_key, db)
                     st.success("Configurações atualizadas!")
@@ -173,12 +192,25 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                 apelido_nova = am1.text_input("Apelido (ex: CG Reserva)")
                 modelo_cat = am2.selectbox("Modelo Pré-Calibrado", options=list(CATALOGO_MOTOS.keys()))
                 odo_nova = am3.number_input("Hodômetro Atual", min_value=0, value=0, step=100)
+
+                piloto_nova = ""
+                if papel == "gestor":
+                    piloto_nova = st.selectbox(
+                        "Atribuir Colaborador à Nova Moto:",
+                        options=list(opcoes_pil.keys()),
+                        format_func=lambda k: opcoes_pil[k],
+                        key="sel_piloto_add"
+                    )
+
                 if st.form_submit_button("Cadastrar e Ativar Nova Moto", use_container_width=True):
                     if not apelido_nova.strip():
                         st.error("Informe um apelido para a moto.")
                     else:
                         novo_id = f"moto_{len(db['motos']) + 1}_{int(date.today().strftime('%d%H%M'))}"
-                        db["motos"].append(criar_moto_do_catalogo(novo_id, apelido_nova, modelo_cat, int(odo_nova)))
+                        nova_m = criar_moto_do_catalogo(novo_id, apelido_nova, modelo_cat, int(odo_nova))
+                        nova_m["piloto_email"] = piloto_nova
+                        nova_m["empresa_id"] = moto_ativa.get("empresa_id", "")
+                        db["motos"].append(nova_m)
                         db["moto_ativa_id"] = novo_id
                         save_state(user_key, db)
                         st.success("Nova moto cadastrada e ativada!")
