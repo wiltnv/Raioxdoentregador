@@ -21,9 +21,8 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
 
         pecas = moto_ativa.get("pecas")
         if not isinstance(pecas, dict) or not pecas:
-            from catalogo_motos import CATALOGO_MOTOS
-            modelo_ref = next(iter(CATALOGO_MOTOS.values()))
-            pecas = {k: dict(v) for k, v in modelo_ref["pecas"].items()}
+            moto_ref = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], moto_ativa.get("modelo", "Honda CG 160 Titan / Fan"), int(moto_ativa.get("hodometro", 0)))
+            pecas = moto_ref["pecas"]
             moto_ativa["pecas"] = pecas
 
         for nome_p, info_p in pecas.items():
