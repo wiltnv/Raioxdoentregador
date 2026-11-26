@@ -183,3 +183,15 @@ def render_tela_login():
         if st.button("⬅️ Voltar para Login", use_container_width=True):
             st.session_state["auth_modo"] = "login"
             st.rerun()
+            
+def listar_pilotos_empresa(empresa_id):
+    if not empresa_id:
+        return []
+    sb = get_supabase()
+    if not sb:
+        return []
+    try:
+        res = sb.table("profiles").select("id, nome, email").eq("empresa_id", empresa_id).eq("papel", "piloto").execute()
+        return res.data or []
+    except Exception:
+        return []
