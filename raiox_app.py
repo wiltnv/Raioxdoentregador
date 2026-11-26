@@ -59,14 +59,20 @@ else:
 db = st.session_state.db
 
 motos_dict = {m["id"]: m for m in db["motos"]}
-col_t1, col_t2 = st.columns([1.6, 1])
-col_t1.title("🏍️ Raio-X do Entregador")
+col_t1, col_t2, col_t3 = st.columns([1.5, 1, 0.55])
+col_t1.title("🏍️ Raio-X")
 moto_escolhida_id = col_t2.selectbox(
     "Moto Ativa:",
     options=list(motos_dict.keys()),
     format_func=lambda mid: motos_dict[mid]["apelido"],
-    index=list(motos_dict.keys()).index(db["moto_ativa_id"])
+    index=list(motos_dict.keys()).index(db["moto_ativa_id"]),
+    label_visibility="collapsed"
 )
+if col_t3.button("🚪 Sair", use_container_width=True, help="Sair / Trocar Usuário"):
+    st.session_state.pop("perfil_logado", None)
+    st.session_state.pop("db", None)
+    st.rerun()
+
 if moto_escolhida_id != db["moto_ativa_id"]:
     db["moto_ativa_id"] = moto_escolhida_id
     save_state(user_key, db)
