@@ -11,6 +11,11 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
     else:
         sub_pecas, sub_abast, sub_manut, sub_config = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina", "⚙️ Configurar Moto"])
 
+    if not isinstance(moto_ativa.get("pecas"), dict) or not moto_ativa.get("pecas"):
+        modelo_padrao = next(iter(CATALOGO_MOTOS.keys()))
+        moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], modelo_padrao, int(moto_ativa.get("hodometro", 0)))
+        moto_ativa["pecas"] = moto_padrao["pecas"]
+
     with sub_pecas:
         st.subheader(f"Painel de Desgaste — {moto_ativa['apelido']}")
         if papel != "piloto":
@@ -19,12 +24,7 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
             g2.metric("Reserva Peças+Fixos / Km", f"R$ {custo_reserva_km:.3f}")
             g3.metric("Total / Km", f"R$ {custo_gas_km + custo_reserva_km:.3f}")
 
-        pecas = moto_ativa.get("pecas")
-        if not isinstance(pecas, dict) or not pecas:
-            moto_ref = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], moto_ativa.get("modelo", "Honda CG 160 Titan / Fan"), int(moto_ativa.get("hodometro", 0)))
-            pecas = moto_ref["pecas"]
-            moto_ativa["pecas"] = pecas
-
+        pecas = moto_ativa["pecas"]
         for nome_p, info_p in pecas.items():
             km_rodado_p = max(0, int(moto_ativa["hodometro"]) - int(info_p["ultimo_km"]))
             vida_p = max(1, int(info_p["vida_util"]))
@@ -39,6 +39,10 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                 status_icon = "✅ OK"
 
             col_p1, col_p2, col_p3 = st.columns([1.4, 1, 1])
+            col_p1.markdown(f"**{nome_p}** ({status_icon})")
+            col_p2.caption(f"Rodou: {km_rodado_p:,} / {vida_p:,} km")
+            col_p3.caption(f"Resta: **{km_restante:,} km**")
+            st.progress(pct_uso)
 
             if papel != "piloto":
                 with st.expander(f"Editar parâmetro: {nome_p}"):
