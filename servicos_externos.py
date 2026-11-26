@@ -37,31 +37,26 @@ def load_state(user_key):
             primeiro = next(iter(res.data or []), None)
             if primeiro:
                 return migrate_data(primeiro["state_json"]), True
+            novo_estado = get_default_data()
+            novo_estado["motos"][0]["apelido"] = "Moto Principal"
+            novo_estado["motos"][0]["hodometro"] = 0
+            novo_estado["turnos"] = []
+            novo_estado["abastecimentos"] = []
+            novo_estado["manutencoes"] = []
+            return novo_estado, True
         except Exception:
             pass
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return migrate_data(json.load(f)), False
-        except Exception:
-            pass
-    return get_default_data(), bool(sb)
+    return get_default_data(), False
 
 def save_state(user_key, data):
     sb = get_supabase()
-    ok_cloud = False
     if sb:
         try:
             sb.table("user_states").upsert({"user_key": user_key, "state_json": data}).execute()
-            ok_cloud = True
+            return True
         except Exception as e:
             st.error(f"Erro ao salvar na nuvem (Supabase): {e}")
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-    return ok_cloud
+    return False
 
 def buscar_enderecos_online(query):
     if not query or len(query.strip()) < 3:
