@@ -11,10 +11,17 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
     else:
         sub_pecas, sub_abast, sub_manut, sub_config = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina", "⚙️ Configurar Moto"])
 
-    if not isinstance(moto_ativa.get("pecas"), dict) or not moto_ativa.get("pecas"):
-        modelo_padrao = next(iter(CATALOGO_MOTOS.keys()))
-        moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], modelo_padrao, int(moto_ativa.get("hodometro", 0)))
-        moto_ativa["pecas"] = moto_padrao["pecas"]
+    pecas_raw = moto_ativa.get("pecas")
+    if isinstance(pecas_raw, list):
+        pecas_dict = {
+            p.get("nome", f"Peça {i+1}"): p
+            for i, p in enumerate(pecas_raw) if isinstance(p, dict)
+        }
+        moto_ativa["pecas"] = pecas_dict
+    elif not isinstance(pecas_raw, dict) or not pecas_raw:
+        moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], next(iter(CATALOGO_MOTOS.keys())), int(moto_ativa.get("hodometro", 0)))
+        raw_p = moto_padrao.get("pecas", {})
+        moto_ativa["pecas"] = {p["nome"]: p for p in raw_p} if isinstance(raw_p, list) else dict(raw_p)
 
     with sub_pecas:
         st.subheader(f"Painel de Desgaste — {moto_ativa['apelido']}")
