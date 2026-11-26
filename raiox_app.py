@@ -280,28 +280,7 @@ with tab_hoje:
                     db["turnos"].pop(idx_rem)
                     save_state(user_key, db)
                     st.rerun()
-
-    if turnos_filtrados:
-        st.subheader("Histórico de Turnos")
-        rows = []
-        for t in turnos_filtrados:
-            m_ref = motos_dict.get(t.get("moto_id"), moto_ativa)
-            _, _, c_km_ref = calc_custos_moto(m_ref)
-            liq = t["bruto"] - (t["km"] * c_km_ref) - t.get("extras", 0.0)
-            rows.append({
-                "Data": t["data"], "Moto": m_ref["apelido"], "Origem": t["estabelecimento"],
-                "Km": t["km"], "Bruto (R$)": round(t["bruto"], 2), "Líquido (R$)": round(liq, 2)
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-        with st.expander("🗑️ Excluir um turno lançado errado"):
-            opcoes_ex = [f"{i} | {t['data']} — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})" for i, t in enumerate(db["turnos"])]
-            sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
-            if st.button("Confirmar Exclusão do Turno", type="primary"):
-                idx_rem = int(sel_ex.split(" | ")[0])
-                db["turnos"].pop(idx_rem)
-                save_state(user_key, db)
-                st.rerun()
+ 
 with tab_sim:
     sub_app, sub_orc = st.tabs(["⚡ Simular Corrida de App", "🧾 Calcular Orçamento para Cliente"])
 
@@ -439,5 +418,7 @@ from aba_clt import render_aba_clt
 with tab_garagem:
     render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km)
 
-with tab_clt:
-    render_aba_clt(db, motos_dict, moto_ativa)
+if tab_clt is not None:
+    with tab_clt:
+        render_aba_clt(db, motos_dict, moto_ativa)
+
