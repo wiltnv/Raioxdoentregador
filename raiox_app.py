@@ -420,5 +420,6 @@ with tab_garagem:
 
 if tab_clt is not None:
     with tab_clt:
-        render_aba_clt(db, motos_dict, moto_ativa)
+    render_aba_clt(db, motos_dict, moto_ativa)
+
 
