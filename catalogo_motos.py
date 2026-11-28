@@ -1,3 +1,13 @@
+ESTABELECIMENTOS_LISTA = [
+    "Nenhum (Apenas Apps)",
+    "Sta. Efigênia",
+    "Golden Sushi",
+    "O Chef",
+    "Particular",
+    "Extra 1",
+    "Extra 2"
+]
+
 CATALOGO_MOTOS = {
     "Honda NXR 150 Bros ESD 2008 (Carburada)": {
         "tipo_posse": "propria",
