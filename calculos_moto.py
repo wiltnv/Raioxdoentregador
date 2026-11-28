@@ -44,7 +44,8 @@ def get_default_data():
             }
         ],
         "manutencoes": [dict(m) for m in MANUTENCOES_RETROATIVAS],
-        "abastecimentos": []
+        "abastecimentos": [],
+        "locais": []
     }
 
 def migrate_data(raw):
@@ -132,6 +133,9 @@ def migrate_data(raw):
 
     if "abastecimentos" not in raw or not isinstance(raw["abastecimentos"], list):
         raw["abastecimentos"] = []
+
+    if "locais" not in raw or not isinstance(raw["locais"], list):
+        raw["locais"] = []
 
     return raw
 

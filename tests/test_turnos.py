@@ -49,11 +49,15 @@ class TestRegras(unittest.TestCase):
     def test_montar_turno(self):
         aberto = {"id": "t1", "moto_id": "moto_1", "hodometro_ini": 81420,
                   "hodometro_anterior": 81350, "inicio": "2026-11-28T01:30:00+00:00"}
-        r = T.montar_turno(aberto, 81500, 100.0, 20.0, 5.0, "Pizzaria X", "Zezinho", "z@x.com",
+        origens = [{"local_id": "loc_1", "local": "Pizzaria X", "valor": 20.0}]
+        r = T.montar_turno(aberto, 81500, 100.0, origens, 5.0, " cliente atrasou ", "Zezinho", "z@x.com",
                            0.4123456, "2026-11-28T05:00:00+00:00")
         self.assertEqual(r["km"], 80)
         self.assertEqual(r["bruto"], 120.0)
+        self.assertEqual(r["ganho_estab"], 20.0)
         self.assertEqual(r["estabelecimento"], "Apps + Pizzaria X")
+        self.assertEqual(r["origens"], origens)
+        self.assertEqual(r["observacao"], "cliente atrasou")
         self.assertEqual(r["duracao_min"], 210)
         self.assertEqual(r["km_particular_antes"], 70)
         self.assertEqual(r["piloto_email"], "z@x.com")
@@ -61,12 +65,24 @@ class TestRegras(unittest.TestCase):
         # 01:30 UTC = 22:30 do dia anterior em Brasília
         self.assertEqual(r["data"], "2026-11-27")
 
-    def test_origem_so_apps_ou_so_estabelecimento(self):
+    def test_origem_so_apps_ou_so_cliente(self):
         aberto = {"moto_id": "m", "hodometro_ini": 10, "inicio": "2026-11-28T15:00:00+00:00"}
-        a = T.montar_turno(aberto, 20, 50.0, 0.0, 0.0, "Loja", "n", "e", 0.3, "2026-11-28T16:00:00+00:00")
-        b = T.montar_turno(aberto, 20, 0.0, 50.0, 0.0, "Loja", "n", "e", 0.3, "2026-11-28T16:00:00+00:00")
+        loja = [{"local_id": "l1", "local": "Loja", "valor": 50.0}]
+        a = T.montar_turno(aberto, 20, 50.0, [], 0.0, "", "n", "e", 0.3, "2026-11-28T16:00:00+00:00")
+        b = T.montar_turno(aberto, 20, 0.0, loja, 0.0, "", "n", "e", 0.3, "2026-11-28T16:00:00+00:00")
         self.assertEqual(a["estabelecimento"], "iFood / Apps")
+        self.assertEqual(a["bruto"], 50.0)
         self.assertEqual(b["estabelecimento"], "Loja")
+        self.assertEqual(b["bruto"], 50.0)
+
+    def test_varias_origens_somam_no_mesmo_turno(self):
+        aberto = {"moto_id": "m", "hodometro_ini": 10, "inicio": "2026-11-28T15:00:00+00:00"}
+        origens = [{"local_id": "a", "local": "A", "valor": 10.0}, {"local_id": "b", "local": "B", "valor": 15.5},
+                   {"local_id": "c", "local": "C", "valor": 4.5}]
+        r = T.montar_turno(aberto, 20, 20.0, origens, 0.0, "", "n", "e", 0.3, "2026-11-28T16:00:00+00:00")
+        self.assertEqual(r["bruto"], 50.0)
+        self.assertEqual(r["ganho_estab"], 30.0)
+        self.assertEqual(r["estabelecimento"], "Apps + A + B (+1)")
 
 
 class _Res:

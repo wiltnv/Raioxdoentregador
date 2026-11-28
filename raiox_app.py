@@ -3,7 +3,8 @@ import pandas as pd
 import json
 import urllib.parse
 from datetime import date, datetime
-from catalogo_motos import ESTABELECIMENTOS_LISTA, CATALOGO_MOTOS, criar_moto_do_catalogo
+from catalogo_motos import CATALOGO_MOTOS, criar_moto_do_catalogo
+from origens import campos_de_ganho
 from calculos_moto import DATA_INICIO_CICLO, PISO_CLT_MENSAL, META_CLT_DIARIA, migrate_data, calc_custos_moto
 from servicos_externos import (
     load_state, save_state, buscar_enderecos_online, calcular_rota_osrm, interpretar_audio_gemini,
@@ -12,6 +13,7 @@ from servicos_externos import (
 from auth_manager import render_tela_login
 from ui_turno import render_turno_em_andamento
 from ui_convites import render_convites_gestor
+from ui_origens import render_origens, render_gerenciar_locais, limpar_prefixo
 from turnos import formatar_duracao
 
 try:
@@ -283,7 +285,13 @@ with tab_hoje:
             f"💰 **Caixinha da Moto (Não Gastar):** Separe **R$ {total_gas + total_reserva:.2f}** "
             f"(**R$ {total_gas:.2f}** Gasolina + **R$ {total_reserva:.2f}** Reserva Manutenção/Fixos)"
         )
-        turnos_dur = [t for t in turnos_filtrados if t.get("duracao_min")]
+        if total_bruto > 0 and total_km > 0:
+            dias_trab = len({t["data"] for t in turnos_filtrados})
+            i1, i2, i3 = st.columns(3)
+            i1.metric("Ganho por km", f"R$ {total_bruto / total_km:.2f}")
+            i2.metric("% de despesa", f"{(total_bruto - lucro_liquido) / total_bruto * 100:.0f}%")
+            i3.metric("Lucro médio/dia", f"R$ {lucro_liquido / max(dias_trab, 1):.2f}")
+        turnos_dur = [t for t in turnos_filtrados if (t.get("duracao_min") or 0) >= 10]
         if turnos_dur:
             liq_dur = sum(
                 t["bruto"] - t["km"] * calc_custos_moto(motos_dict.get(t.get("moto_id"), moto_ativa))[2] - t.get("extras", 0.0)
@@ -298,42 +306,39 @@ with tab_hoje:
     render_turno_em_andamento(db, user_key, perfil, papel, motos_dict, moto_ativa, nome_usuario, email_usuario)
 
     with st.expander("➕ Registrar turno manualmente (sem Iniciar/Encerrar)", expanded=False):
-        with st.form("form_turno"):
-            col_d, col1, col2 = st.columns([1.2, 1, 1])
-            data_turno = col_d.date_input("Data", value=date.today())
-            km_ini = col1.number_input("Km Inicial", value=int(moto_ativa["hodometro"]), step=1)
-            km_fim = col2.number_input("Km Final", value=int(moto_ativa["hodometro"]), step=1)
+        hodo_atual = int(moto_ativa["hodometro"])
+        col_d, col1, col2 = st.columns([1.2, 1, 1])
+        data_turno = col_d.date_input("Data", value=date.today(), key="man_data")
+        km_ini = col1.number_input("Km Inicial", value=hodo_atual, step=1, key=f"man_kmi_{moto_ativa['id']}_{hodo_atual}")
+        km_fim = col2.number_input("Km Final", value=hodo_atual, step=1, key=f"man_kmf_{moto_ativa['id']}_{hodo_atual}")
+        gastos_extras = st.number_input("Gastos Extras no Dia (R$)", min_value=0.0, step=5.0, key="man_ext")
+        ganho_app, origens, erro_origem = render_origens(db, papel, user_key, "man")
+        obs_turno = st.text_input("Observação (opcional)", key="man_obs")
 
-            col3, col4 = st.columns(2)
-            ganho_app = col3.number_input("Ganhos Apps / iFood-Bee (R$)", min_value=0.0, step=5.0)
-            gastos_extras = col4.number_input("Gastos Extras no Dia (R$)", min_value=0.0, step=5.0)
+        if st.button("Salvar Turno", use_container_width=True, key="man_salvar"):
+            dist = km_fim - km_ini
+            if erro_origem:
+                st.error(erro_origem)
+            elif dist <= 0:
+                st.error("O Km Final deve ser maior que o Km Inicial.")
+            else:
+                registro = {
+                    "data": str(data_turno), "moto_id": moto_ativa["id"], "piloto": nome_usuario, "piloto_email": email_usuario,
+                    "km_ini": km_ini, "km_fim": km_fim, "km": dist,
+                    "extras": gastos_extras, "custo_km": round(custo_total_km, 4),
+                    "observacao": obs_turno.strip(),
+                }
+                registro.update(campos_de_ganho(ganho_app, origens))
+                db["turnos"].append(registro)
+                if km_fim > moto_ativa["hodometro"]:
+                    moto_ativa["hodometro"] = km_fim
+                if save_state(user_key, db):
+                    limpar_prefixo("man")
+                    st.success(f"Turno salvo! +{dist} km ({registro['estabelecimento']}).")
+                st.rerun()
 
-            col5, col6 = st.columns(2)
-            estabelecimento = col5.selectbox("Estabelecimento", options=ESTABELECIMENTOS_LISTA)
-            ganho_fixo = col6.number_input("Ganho no Estabelecimento (R$)", min_value=0.0, step=5.0)
-
-            if st.form_submit_button("Salvar Turno", use_container_width=True):
-                dist = km_fim - km_ini
-                bruto_dia = ganho_app + ganho_fixo
-                if dist <= 0:
-                    st.error("O Km Final deve ser maior que o Km Inicial.")
-                else:
-                    local_reg = estabelecimento if ganho_fixo > 0 else "iFood / Apps"
-                    if ganho_app > 0 and ganho_fixo > 0:
-                        local_reg = f"Apps + {estabelecimento}"
-
-                    db["turnos"].append({
-                        "data": str(data_turno), "moto_id": moto_ativa["id"], "piloto": nome_usuario, "piloto_email": email_usuario,
-                        "km_ini": km_ini, "km_fim": km_fim, "km": dist,
-                        "ganho_app": ganho_app, "estabelecimento": local_reg,
-                        "ganho_estab": ganho_fixo, "bruto": bruto_dia,
-                        "extras": gastos_extras, "custo_km": round(custo_total_km, 4)
-                    })
-                    if km_fim > moto_ativa["hodometro"]:
-                        moto_ativa["hodometro"] = km_fim
-                    save_state(user_key, db)
-                    st.success(f"Turno salvo! +{dist} km ({local_reg}).")
-                    st.rerun()
+    if papel != "piloto":
+        render_gerenciar_locais(db, user_key)
 
     if turnos_filtrados:
         st.subheader("Histórico de Turnos")
@@ -349,9 +354,13 @@ with tab_hoje:
             row_item["Duração"] = formatar_duracao(t["duracao_min"]) if t.get("duracao_min") else "-"
             if papel != "piloto":
                 row_item["Bruto (R$)"] = round(t["bruto"], 2)
+                row_item["Gastos (R$)"] = round(t.get("extras", 0.0), 2)
+                row_item["Custo/km (R$)"] = round(c_km_ref, 3)
                 row_item["Piloto"] = t.get("piloto", "-")
                 row_item["Líquido (R$)"] = round(liq, 2)
-                row_item["Líq./h (R$)"] = round(liq / (t["duracao_min"] / 60.0), 2) if t.get("duracao_min") else None
+                dur_t = t.get("duracao_min") or 0
+                row_item["Líq./h (R$)"] = round(liq / (dur_t / 60.0), 2) if dur_t >= 10 else "-"
+            row_item["Obs."] = t.get("observacao", "") or ""
             rows.append(row_item)
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 

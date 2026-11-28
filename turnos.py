@@ -2,6 +2,8 @@
 import re
 from datetime import datetime, timezone, timedelta
 
+from origens import campos_de_ganho
+
 try:
     from zoneinfo import ZoneInfo
     FUSO = ZoneInfo("America/Sao_Paulo")
@@ -68,16 +70,13 @@ def validar_encerramento(km_ini, km_fim):
     return None
 
 
-def montar_turno(aberto, km_fim, ganho_app, ganho_fixo, extras, estabelecimento,
+def montar_turno(aberto, km_fim, ganho_app, origens, extras, observacao,
                  nome, email, custo_km, fim_utc):
     """Monta o registro de turno no mesmo formato do fechamento manual, com campos de tempo."""
     km_ini = int(aberto["hodometro_ini"])
     km_fim = int(km_fim)
-    local_reg = estabelecimento if ganho_fixo > 0 else "iFood / Apps"
-    if ganho_app > 0 and ganho_fixo > 0:
-        local_reg = f"Apps + {estabelecimento}"
     inicio = parse_iso(aberto["inicio"])
-    return {
+    registro = {
         "data": inicio.astimezone(FUSO).date().isoformat(),
         "moto_id": aberto["moto_id"],
         "piloto": nome,
@@ -85,17 +84,16 @@ def montar_turno(aberto, km_fim, ganho_app, ganho_fixo, extras, estabelecimento,
         "km_ini": km_ini,
         "km_fim": km_fim,
         "km": km_fim - km_ini,
-        "ganho_app": float(ganho_app),
-        "estabelecimento": local_reg,
-        "ganho_estab": float(ganho_fixo),
-        "bruto": float(ganho_app + ganho_fixo),
         "extras": float(extras),
+        "observacao": (observacao or "").strip(),
         "custo_km": round(float(custo_km), 4),
         "inicio": inicio.isoformat(),
         "fim": parse_iso(fim_utc).isoformat(),
         "duracao_min": duracao_minutos(inicio, fim_utc),
         "km_particular_antes": km_particular(km_ini, aberto.get("hodometro_anterior")),
     }
+    registro.update(campos_de_ganho(ganho_app, origens))
+    return registro
 
 
 # ---------- banco (tabela turnos_abertos) ----------

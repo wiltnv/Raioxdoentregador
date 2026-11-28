@@ -58,3 +58,16 @@
 - Cadastro exige PIN numérico de 4 a 6 dígitos com confirmação e valida o e-mail.
 - Login não carrega mais o hash do PIN para a sessão.
 - Novos: `seguranca.py`, `convites.py`, `ui_convites.py`, `tests/test_seguranca.py`, `tests/test_convites.py`.
+
+## Rodada 5: origens do ganho, observação e indicadores
+- Fechamento (manual e Encerrar turno) com Apps + várias origens, cada uma com seu valor, somadas em um turno só.
+- Locais/clientes por conta (`db["locais"]`), editáveis em "📍 Meus locais / Clientes" (autônomo e gestor):
+  adicionar na hora, renomear, arquivar. Nome parecido com um existente gera aviso; igual reaproveita.
+- Piloto só escolhe da lista do gestor (mais "Particular" e "Outro"). Não digita nome livre: relatório por cliente fica limpo.
+- Cada origem guarda `local_id` (para relatório por cliente) e o nome da época (renomear não altera o histórico).
+- A lista fixa de estabelecimentos pessoal saiu do código (`ESTABELECIMENTOS_LISTA`). Contas começam com lista vazia.
+- Campo Observação no turno e na tabela.
+- Indicadores da planilha para autônomo/gestor: Ganho por km, % de despesa, Lucro médio/dia.
+- Histórico com colunas Gastos e Custo/km; Líq./h só para turnos de 10 min ou mais ("-" nos demais).
+- Formulários de fechamento deixaram de usar `st.form` (precisam de botões de adicionar origem).
+- Novos: `origens.py`, `ui_origens.py`, `tests/test_origens.py`.

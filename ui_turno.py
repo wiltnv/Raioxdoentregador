@@ -1,7 +1,7 @@
 import streamlit as st
 from servicos_externos import get_supabase, save_state
 from calculos_moto import calc_custos_moto
-from catalogo_motos import ESTABELECIMENTOS_LISTA
+from ui_origens import render_origens, limpar_prefixo
 from turnos import (
     FUSO, LIMITE_ALERTA_HORAS, agora_utc, parse_iso, duracao_minutos, formatar_duracao,
     validar_inicio, validar_encerramento, montar_turno, buscar_turno_aberto, iniciar_turno,
@@ -30,7 +30,7 @@ def _bloco_iniciar(sb, perfil, user_key, papel, moto_ativa, nome_usuario):
             st.rerun()
 
 
-def _bloco_encerrar(sb, aberto, db, user_key, motos_dict, nome_usuario, email_usuario):
+def _bloco_encerrar(sb, aberto, db, user_key, papel, motos_dict, nome_usuario, email_usuario):
     inicio = parse_iso(aberto["inicio"])
     dur = duracao_minutos(inicio, agora_utc())
     km_ini = int(aberto["hodometro_ini"])
@@ -45,18 +45,15 @@ def _bloco_encerrar(sb, aberto, db, user_key, motos_dict, nome_usuario, email_us
     if moto_t is None:
         st.error("A moto deste turno não está disponível para você. Cancele o turno abaixo e inicie outro.")
     else:
-        with st.form(f"form_encerrar_{aberto['id']}"):
-            km_fim = st.number_input("Km Final", min_value=0, value=max(int(moto_t["hodometro"]), km_ini), step=1)
-            c1, c2 = st.columns(2)
-            ganho_app = c1.number_input("Ganhos Apps / iFood-Bee (R$)", min_value=0.0, step=5.0)
-            extras = c2.number_input("Gastos Extras no Dia (R$)", min_value=0.0, step=5.0)
-            c3, c4 = st.columns(2)
-            estab = c3.selectbox("Estabelecimento", options=ESTABELECIMENTOS_LISTA)
-            ganho_fixo = c4.number_input("Ganho no Estabelecimento (R$)", min_value=0.0, step=5.0)
-            enviar = st.form_submit_button("⏹️ Encerrar turno", type="primary", use_container_width=True)
+        pre = f"enc{aberto['id'][:8]}"
+        km_fim = st.number_input("Km Final", min_value=0, value=max(int(moto_t["hodometro"]), km_ini), step=1, key=f"{pre}_km")
+        extras = st.number_input("Gastos Extras no Dia (R$)", min_value=0.0, step=5.0, key=f"{pre}_ext")
+        ganho_app, origens, erro_origem = render_origens(db, papel, user_key, pre)
+        obs = st.text_input("Observação (opcional)", key=f"{pre}_obs")
+        enviar = st.button("⏹️ Encerrar turno", type="primary", use_container_width=True, key=f"{pre}_fim")
 
         if enviar:
-            erro = validar_encerramento(km_ini, km_fim)
+            erro = erro_origem or validar_encerramento(km_ini, km_fim)
             if erro:
                 st.error(erro)
             else:
@@ -65,12 +62,13 @@ def _bloco_encerrar(sb, aberto, db, user_key, motos_dict, nome_usuario, email_us
                     st.warning("Este turno já foi encerrado em outra tela. Atualize a página.")
                 else:
                     _, _, custo_total_km = calc_custos_moto(moto_t)
-                    registro = montar_turno(aberto, km_fim, ganho_app, ganho_fixo, extras, estab,
+                    registro = montar_turno(aberto, km_fim, ganho_app, origens, extras, obs,
                                             nome_usuario, email_usuario, custo_total_km, agora)
                     db["turnos"].append(registro)
                     if int(km_fim) > int(moto_t["hodometro"]):
                         moto_t["hodometro"] = int(km_fim)
                     if save_state(user_key, db):
+                        limpar_prefixo(pre)
                         st.rerun()
                     else:
                         # não gravou: reabre o turno e recarrega da nuvem para nada se perder
@@ -109,6 +107,6 @@ def render_turno_em_andamento(db, user_key, perfil, papel, motos_dict, moto_ativ
         elif aberto is None:
             _bloco_iniciar(sb, perfil, user_key, papel, moto_ativa, nome_usuario)
         else:
-            _bloco_encerrar(sb, aberto, db, user_key, motos_dict, nome_usuario, email_usuario)
+            _bloco_encerrar(sb, aberto, db, user_key, papel, motos_dict, nome_usuario, email_usuario)
     if papel == "gestor":
         _painel_em_turno(sb, user_key, motos_dict)
