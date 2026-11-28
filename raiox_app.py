@@ -11,6 +11,7 @@ from servicos_externos import (
 )
 from auth_manager import render_tela_login
 from ui_turno import render_turno_em_andamento
+from ui_convites import render_convites_gestor
 from turnos import formatar_duracao
 
 try:
@@ -52,10 +53,7 @@ with st.sidebar:
     badge_papel = "🏢 Gestor" if papel == "gestor" else ("🛵 Piloto" if papel == "piloto" else "🏍️ Autônomo")
     st.markdown(f"**{nome_usuario}** ({badge_papel})")
     if empresa_info:
-        if papel == "gestor":
-            st.info(f"🏢 **{empresa_info.get('nome_empresa')}**\n\nCódigo Convite: `{empresa_info.get('codigo_convite')}`")
-        else:
-            st.info(f"🏢 **{empresa_info.get('nome_empresa')}**")
+        st.info(f"🏢 **{empresa_info.get('nome_empresa')}**")
     if st.button("🔄 Recarregar da Nuvem", use_container_width=True):
         st.session_state.pop("db", None)
         st.rerun()
@@ -144,7 +142,8 @@ else:
         f"Custo Real: **R$ {custo_total_km:.3f}/km** (Gasolina R$ {custo_gas_km:.3f} + Reserva R$ {custo_reserva_km:.3f})"
     )
 if papel == "gestor" and empresa_info:
-    st.info(f"🏢 **{empresa_info.get('nome_empresa')}** • Código de Convite para Pilotos: **`{empresa_info.get('codigo_convite')}`**")
+    st.info(f"🏢 **{empresa_info.get('nome_empresa')}**")
+    render_convites_gestor(perfil, empresa_info)
 
 with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manutenção)"):
     audio_gravado = st.audio_input("Toque no microfone e fale (ex: 'Coloquei 10 litros, deu 60 reais, hodômetro 81350')", key="voz_cmd")

@@ -45,3 +45,16 @@
   falha ao salvar reabre o turno e recarrega da nuvem, alerta após 12 h aberto, cancelar turno.
 - Novos: `turnos.py` (regras e banco, testável), `ui_turno.py` (tela), `tests/test_turnos.py`.
 - Formulário manual de turno continua disponível (recolhido).
+
+## Rodada 3: convites e login
+- Convites com validade (1/7/30 dias), número de usos (1/5/10) e revogação, gerenciados pelo gestor
+  em "👥 Convites para pilotos". Código aleatório de 8 caracteres (ex.: K7QM-4XPD), sem 0/O/1/I.
+- O código antigo de `empresas.codigo_convite` NÃO entra mais. O gestor precisa gerar convites novos.
+- Uso do convite é atômico (duas pessoas não usam o mesmo convite de uso único) e é devolvido se o cadastro falhar.
+- PIN com PBKDF2 e sal aleatório por usuário. PINs antigos continuam valendo e são atualizados no primeiro login.
+- Opcional: segredo `PIN_PEPPER` nos Secrets (defina uma vez e nunca troque).
+- Bloqueio progressivo por conta: 5 erros seguidos = 15 min; a partir do 10º = 1 h; a partir do 15º = 24 h.
+- Mensagem de login única ("E-mail ou PIN incorretos"), sem revelar se o e-mail existe.
+- Cadastro exige PIN numérico de 4 a 6 dígitos com confirmação e valida o e-mail.
+- Login não carrega mais o hash do PIN para a sessão.
+- Novos: `seguranca.py`, `convites.py`, `ui_convites.py`, `tests/test_seguranca.py`, `tests/test_convites.py`.
