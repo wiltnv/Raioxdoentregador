@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from catalogo_motos import CATALOGO_MOTOS, criar_moto_do_catalogo
-from servicos_externos import save_state
+import uuid
+from servicos_externos import save_state, definir_moto_ativa
 
 def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel="autonomo", empresa_info=None):
     if papel == "piloto":
@@ -207,12 +208,12 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                     if not apelido_nova.strip():
                         st.error("Informe um apelido para a moto.")
                     else:
-                        novo_id = f"moto_{len(db['motos']) + 1}_{int(date.today().strftime('%d%H%M'))}"
+                        novo_id = f"moto_{uuid.uuid4().hex[:10]}"
                         nova_m = criar_moto_do_catalogo(novo_id, apelido_nova, modelo_cat, int(odo_nova))
                         nova_m["piloto_email"] = piloto_nova
                         nova_m["empresa_id"] = moto_ativa.get("empresa_id", "")
                         db["motos"].append(nova_m)
-                        db["moto_ativa_id"] = novo_id
+                        definir_moto_ativa(db, novo_id, papel)
                         save_state(user_key, db)
                         st.success("Nova moto cadastrada e ativada!")
                         st.rerun()
@@ -232,9 +233,11 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                 )
                 if st.button("Confirmar Exclusão da Moto", type="primary", key="btn_excluir_moto"):
                     db["motos"] = [m for m in db["motos"] if m["id"] != moto_del_id]
-                    if db["moto_ativa_id"] == moto_del_id:
+                    if moto_ativa["id"] == moto_del_id:
                         primeiro_m = next(iter(db["motos"]))
-                        db["moto_ativa_id"] = primeiro_m["id"]
+                        definir_moto_ativa(db, primeiro_m["id"], papel)
+                    if db.get("moto_ativa_id") == moto_del_id:
+                        db["moto_ativa_id"] = db["motos"][0]["id"]
                     save_state(user_key, db)
                     st.warning("Moto removida com sucesso!")
                     st.rerun()

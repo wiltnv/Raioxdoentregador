@@ -104,6 +104,8 @@ def render_tela_login():
     st.caption("Gestão inteligente de ganhos, custos reais por km e frotas.")
 
     modo_tela = st.session_state.get("auth_modo", "login")
+    if modo_tela not in ("login", "cadastro"):
+        modo_tela = "login"
 
     if modo_tela == "login":
         st.subheader("🔑 Entrar na sua conta")
@@ -119,12 +121,8 @@ def render_tela_login():
                     st.session_state.pop("db", None)
                     st.rerun()
 
-        col_b1, col_b2 = st.columns(2)
-        if col_b1.button("✨ Não tem conta? Criar Cadastro", use_container_width=True):
+        if st.button("✨ Não tem conta? Criar Cadastro", use_container_width=True):
             st.session_state["auth_modo"] = "cadastro"
-            st.rerun()
-        if col_b2.button("⚡ Acesso Rápido (Teste)", use_container_width=True):
-            st.session_state["auth_modo"] = "rapido"
             st.rerun()
 
     elif modo_tela == "cadastro":
@@ -166,24 +164,6 @@ def render_tela_login():
             st.session_state["auth_modo"] = "login"
             st.rerun()
 
-    else:
-        st.subheader("⚡ Acesso Rápido sem Cadastro")
-        cod_legado = st.text_input("Código da Conta de Teste:", value="beta_teste")
-        if st.button("Entrar no Modo Rápido", type="primary", use_container_width=True):
-            st.session_state["perfil_logado"] = {
-                "id": "modo_rapido",
-                "nome": cod_legado.strip() or "Visitante",
-                "email": "",
-                "papel": "autonomo",
-                "empresa": None,
-                "state_key": cod_legado.strip() or "beta_teste"
-            }
-            st.session_state.pop("db", None)
-            st.rerun()
-        if st.button("⬅️ Voltar para Login", use_container_width=True):
-            st.session_state["auth_modo"] = "login"
-            st.rerun()
-            
 def listar_pilotos_empresa(empresa_id):
     if not empresa_id:
         return []

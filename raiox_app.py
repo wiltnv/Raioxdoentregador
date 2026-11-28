@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
+import json
 import urllib.parse
 from datetime import date, datetime
 from catalogo_motos import ESTABELECIMENTOS_LISTA, CATALOGO_MOTOS, criar_moto_do_catalogo
 from calculos_moto import DATA_INICIO_CICLO, PISO_CLT_MENSAL, META_CLT_DIARIA, migrate_data, calc_custos_moto
-from servicos_externos import load_state, save_state, buscar_enderecos_online, calcular_rota_osrm, interpretar_audio_gemini
+from servicos_externos import (
+    load_state, save_state, buscar_enderecos_online, calcular_rota_osrm, interpretar_audio_gemini,
+    carregar_config_precos, salvar_config_precos, obter_moto_ativa_id, definir_moto_ativa,
+)
 from auth_manager import render_tela_login
 
 try:
@@ -19,6 +23,8 @@ try:
 except ImportError:
     HAS_GEO = False
 
+APP_VERSION = "3.0-beta2"
+
 st.set_page_config(page_title="Raio-X do Entregador", page_icon="🏍️", layout="centered")
 
 if "perfil_logado" not in st.session_state:
@@ -28,7 +34,11 @@ if "perfil_logado" not in st.session_state:
 perfil = st.session_state["perfil_logado"]
 papel = perfil.get("papel", "autonomo")
 empresa_info = perfil.get("empresa")
-user_key = perfil.get("state_key", "beta_teste")
+user_key = perfil.get("state_key")
+if not user_key:
+    st.error("Sua conta está sem identificação de dados. Recarregue a página e entre novamente.")
+    st.session_state.pop("perfil_logado", None)
+    st.stop()
 nome_usuario = perfil.get("nome", "Entregador")
 email_usuario = perfil.get("email", "")
 
@@ -49,15 +59,34 @@ with st.sidebar:
         st.session_state.pop("db", None)
         st.rerun()
 
+aviso_salvar = st.session_state.pop("_aviso_persistencia", None)
+if aviso_salvar:
+    st.error(aviso_salvar)
+
 if "db" not in st.session_state or st.session_state.get("loaded_key") != user_key:
     loaded_db, cloud_ok = load_state(user_key)
+    if not cloud_ok or loaded_db is None:
+        st.error("☁️ Não consegui carregar seus dados da nuvem. Por segurança, nada será gravado até a conexão voltar.")
+        if st.button("🔄 Tentar de novo", type="primary"):
+            st.rerun()
+        st.stop()
     st.session_state.db = migrate_data(loaded_db)
     st.session_state.loaded_key = user_key
-    st.session_state.cloud_ok = cloud_ok
+    st.session_state.cloud_ok = True
 else:
     st.session_state.db = migrate_data(st.session_state.db)
 
 db = st.session_state.db
+
+if papel in ("autonomo", "gestor"):
+    with st.sidebar:
+        st.download_button(
+            "💾 Baixar backup (JSON)",
+            data=json.dumps(db, ensure_ascii=False, indent=2, default=str),
+            file_name=f"raiox_backup_{date.today().isoformat()}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
 
 if empresa_info:
     for m_item in db["motos"]:
@@ -65,25 +94,26 @@ if empresa_info:
 
 motos_visiveis = db["motos"]
 if papel == "piloto":
-    atribuidas = [m for m in db["motos"] if m.get("piloto_email") == email_usuario]
-    motos_visiveis = atribuidas if atribuidas else db["motos"][:1]
+    motos_visiveis = [m for m in db["motos"] if m.get("piloto_email") == email_usuario]
+    if not motos_visiveis:
+        st.warning("🛵 Nenhuma moto foi atribuída a você ainda. Peça ao gestor da empresa para atribuir uma moto ao seu perfil e depois toque em 🔄 Recarregar da Nuvem.")
+        st.stop()
 
 motos_dict = {m["id"]: m for m in motos_visiveis}
-if db["moto_ativa_id"] not in motos_dict:
-    db["moto_ativa_id"] = next(iter(motos_dict.keys()))
+moto_ativa_id = obter_moto_ativa_id(db, papel, motos_dict)
 
 col_t1, col_t2, col_t3 = st.columns([1.6, 1, 0.55])
 col_t1.title("🏍️ Raio-X")
 
 if papel == "piloto" and len(motos_visiveis) <= 1:
-    col_t2.markdown(f"**🏍️ {motos_dict[db['moto_ativa_id']]['apelido']}**")
-    moto_escolhida_id = db["moto_ativa_id"]
+    col_t2.markdown(f"**🏍️ {motos_dict[moto_ativa_id]['apelido']}**")
+    moto_escolhida_id = moto_ativa_id
 else:
     moto_escolhida_id = col_t2.selectbox(
         "Moto Ativa:",
         options=list(motos_dict.keys()),
         format_func=lambda mid: motos_dict[mid]["apelido"],
-        index=list(motos_dict.keys()).index(db["moto_ativa_id"]),
+        index=list(motos_dict.keys()).index(moto_ativa_id),
         label_visibility="collapsed"
     )
 
@@ -92,12 +122,13 @@ if col_t3.button("🚪 Sair", use_container_width=True, help="Sair / Trocar Usu�
     st.session_state.pop("db", None)
     st.rerun()
 
-if moto_escolhida_id != db["moto_ativa_id"]:
-    db["moto_ativa_id"] = moto_escolhida_id
-    save_state(user_key, db)
+if moto_escolhida_id != moto_ativa_id:
+    definir_moto_ativa(db, moto_escolhida_id, papel)
+    if papel not in ("gestor", "piloto"):
+        save_state(user_key, db)
     st.rerun()
 
-moto_ativa = motos_dict[db["moto_ativa_id"]]
+moto_ativa = motos_dict[moto_ativa_id]
 custo_gas_km, custo_reserva_km, custo_total_km = calc_custos_moto(moto_ativa)
 
 if papel == "piloto":
@@ -309,7 +340,7 @@ with tab_hoje:
                 opcoes_ex = [f"{i} | {t['data']} — {t['estabelecimento']} ({t['km']} km | R$ {t['bruto']:.2f})" for i, t in enumerate(db["turnos"])]
                 sel_ex = st.selectbox("Selecione o turno:", options=opcoes_ex)
                 if st.button("Confirmar Exclusão do Turno", type="primary"):
-                    idx_rem = int(sel_ex.split(" | "))
+                    idx_rem = int(sel_ex.split(" | ")[0])
                     db["turnos"].pop(idx_rem)
                     save_state(user_key, db)
                     st.rerun()
@@ -406,7 +437,13 @@ with tab_sim:
                     tempo_total_min += int(t_desl or 0)
                     st.caption(f"Deslocamento até Retirada: **{d_desl} km** (~{t_desl} min)")
 
-        cfg_emp = db.setdefault("config_empresa", {"valor_km_cobrar": 2.0, "taxa_minima": 8.0})
+        usa_precos_empresa = bool(empresa_info) and papel in ("gestor", "piloto")
+        if usa_precos_empresa:
+            cfg_emp, cfg_ok = carregar_config_precos(empresa_info.get("id"))
+            if not cfg_ok:
+                st.warning("⚠️ Não consegui ler a tabela de preços da empresa. Estou usando os valores padrão; confirme com o gestor antes de enviar o orçamento.")
+        else:
+            cfg_emp = db.setdefault("config_empresa", {"valor_km_cobrar": 2.0, "taxa_minima": 8.0})
 
         if papel == "piloto":
             km_entrega = st.number_input("Km Entrega", min_value=0.1, value=float(km_entrega_auto), step=0.5, key=f"km_ent_{km_entrega_auto}")
@@ -420,11 +457,15 @@ with tab_sim:
 
             if papel == "gestor" and (valor_km_cobrar != cfg_emp.get("valor_km_cobrar") or taxa_minima != cfg_emp.get("taxa_minima")):
                 if st.button("💾 Salvar Tabela de Preços Padrão para Toda a Frota", use_container_width=True):
-                    cfg_emp["valor_km_cobrar"] = float(valor_km_cobrar)
-                    cfg_emp["taxa_minima"] = float(taxa_minima)
-                    save_state(user_key, db)
-                    st.success("Tabela atualizada para todos os pilotos da empresa!")
-                    st.rerun()
+                    if usa_precos_empresa:
+                        gravou = salvar_config_precos(empresa_info.get("id"), valor_km_cobrar, taxa_minima)
+                    else:
+                        cfg_emp["valor_km_cobrar"] = float(valor_km_cobrar)
+                        cfg_emp["taxa_minima"] = float(taxa_minima)
+                        gravou = save_state(user_key, db)
+                    if gravou:
+                        st.success("Tabela atualizada para todos os pilotos da empresa!")
+                        st.rerun()
 
         cobrar_desloc = st.checkbox("Incluir km de deslocamento até retirada no preço ao cliente", value=False, key="orc_chk_desl")
         km_cobrado = km_entrega + (km_desloc if cobrar_desloc else 0.0)
@@ -470,3 +511,6 @@ with tab_garagem:
 if tab_clt is not None:
     with tab_clt:
         render_aba_clt(db, motos_dict, moto_ativa)
+
+st.divider()
+st.caption(f"Raio-X do Entregador • v{APP_VERSION} • ambiente: {st.secrets.get('APP_ENV', 'prod')}")
