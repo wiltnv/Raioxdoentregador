@@ -7,7 +7,9 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import base64
+import copy
 from calculos_moto import get_default_data, migrate_data
+from sincronizacao import salvar_com_versao
 
 try:
     from supabase import create_client
@@ -29,39 +31,117 @@ def get_supabase():
         pass
     return None
 
+def _k_ver(user_key):
+    return f"_ver_{user_key}"
+
+def _k_base(user_key):
+    return f"_base_{user_key}"
+
 def load_state(user_key):
+    """Carrega o estado da nuvem. Retorna (estado, ok).
+
+    Se a leitura falhar, devolve (None, False): quem chama NÃO deve seguir nem
+    gravar nada, para nunca sobrescrever dados reais com dados padrão.
+    """
     sb = get_supabase()
-    if sb:
-        try:
-            res = sb.table("user_states").select("state_json").eq("user_key", user_key).execute()
-            primeiro = next(iter(res.data or []), None)
-            if primeiro:
-                return migrate_data(primeiro["state_json"]), True
-        except Exception:
-            pass
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return migrate_data(json.load(f)), False
-        except Exception:
-            pass
-    return get_default_data(), bool(sb)
+    if not sb:
+        return None, False
+    try:
+        res = sb.table("user_states").select("state_json, version").eq("user_key", user_key).execute()
+        primeiro = next(iter(res.data or []), None)
+        if primeiro:
+            estado = migrate_data(primeiro["state_json"])
+            st.session_state[_k_ver(user_key)] = primeiro.get("version") or 1
+        else:
+            estado = get_default_data()
+            moto_inicial = next(iter(estado["motos"]))
+            moto_inicial["apelido"] = "Moto Principal"
+            moto_inicial["hodometro"] = 0
+            estado["turnos"] = []
+            estado["abastecimentos"] = []
+            estado["manutencoes"] = []
+            st.session_state[_k_ver(user_key)] = None  # primeira gravação cria a linha
+        st.session_state[_k_base(user_key)] = copy.deepcopy(estado)
+        return estado, True
+    except Exception:
+        return None, False
 
 def save_state(user_key, data):
+    """Grava o estado com controle de versão. Em conflito, mescla com o que outra sessão salvou."""
     sb = get_supabase()
-    ok_cloud = False
-    if sb:
-        try:
-            sb.table("user_states").upsert({"user_key": user_key, "state_json": data}).execute()
-            ok_cloud = True
-        except Exception as e:
-            st.error(f"Erro ao salvar na nuvem (Supabase): {e}")
+    if not sb or not st.session_state.get("cloud_ok"):
+        st.session_state["_aviso_persistencia"] = (
+            "⚠️ Sem conexão com a nuvem: o último lançamento NÃO foi salvo. "
+            "Toque em 🔄 Recarregar da Nuvem e repita."
+        )
+        return False
+    ok, nova, erro = salvar_com_versao(
+        sb, user_key, data,
+        st.session_state.get(_k_ver(user_key)),
+        st.session_state.get(_k_base(user_key)) or {},
+    )
+    if not ok:
+        st.session_state["_aviso_persistencia"] = (
+            f"⚠️ O último lançamento NÃO foi salvo ({erro}). "
+            "Toque em 🔄 Recarregar da Nuvem e repita."
+        )
+        return False
+    st.session_state[_k_ver(user_key)] = nova
+    st.session_state[_k_base(user_key)] = copy.deepcopy(data)
+    return True
+
+PRECOS_PADRAO = {"valor_km_cobrar": 2.0, "taxa_minima": 8.0}
+
+def carregar_config_precos(empresa_id):
+    """Tabela de preços da empresa (fonte única, lida a cada execução). Retorna (config, ok)."""
+    sb = get_supabase()
+    if not sb or not empresa_id:
+        return dict(PRECOS_PADRAO), False
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        res = sb.table("empresas").select("config_precos").eq("id", empresa_id).execute()
+        linha = next(iter(res.data or []), None)
+        if linha is None:
+            return dict(PRECOS_PADRAO), False
+        salvo = linha.get("config_precos") or {}
+        cfg = dict(PRECOS_PADRAO)
+        for k in PRECOS_PADRAO:
+            if k in salvo:
+                cfg[k] = float(salvo[k])
+        return cfg, True
     except Exception:
-        pass
-    return ok_cloud
+        return dict(PRECOS_PADRAO), False
+
+def salvar_config_precos(empresa_id, valor_km_cobrar, taxa_minima):
+    sb = get_supabase()
+    if not sb or not empresa_id:
+        return False
+    try:
+        sb.table("empresas").update({
+            "config_precos": {
+                "valor_km_cobrar": float(valor_km_cobrar),
+                "taxa_minima": float(taxa_minima),
+            }
+        }).eq("id", empresa_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar a tabela de preços: {e}")
+        return False
+
+def obter_moto_ativa_id(db, papel, motos_dict):
+    """Gestor e piloto escolhem a moto só na própria sessão (não gravam no JSON compartilhado)."""
+    if papel in ("gestor", "piloto"):
+        atual = st.session_state.get("moto_ativa_sessao")
+    else:
+        atual = db.get("moto_ativa_id")
+    if atual not in motos_dict:
+        atual = next(iter(motos_dict))
+    return atual
+
+def definir_moto_ativa(db, moto_id, papel):
+    if papel in ("gestor", "piloto"):
+        st.session_state["moto_ativa_sessao"] = moto_id
+    else:
+        db["moto_ativa_id"] = moto_id
 
 def buscar_enderecos_online(query):
     if not query or len(query.strip()) < 3:
