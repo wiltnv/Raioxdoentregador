@@ -81,11 +81,15 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                     "litros": float(litros_ab), "valor_pago": float(valor_ab),
                     "preco_litro": preco_l_calc, "posto": posto_ab
                 })
-                moto_ativa["preco_gasolina"] = preco_l_calc
+                if papel != "piloto":
+                    moto_ativa["preco_gasolina"] = preco_l_calc
                 if odo_ab > int(moto_ativa.get("hodometro", 0)):
                     moto_ativa["hodometro"] = int(odo_ab)
                 save_state(user_key, db)
-                st.success(f"Abastecimento salvo! Preço/L atualizado para R$ {preco_l_calc:.2f}.")
+                if papel == "piloto":
+                    st.success("Abastecimento salvo!")
+                else:
+                    st.success(f"Abastecimento salvo! Preço/L atualizado para R$ {preco_l_calc:.2f}.")
                 st.rerun()
 
         abast_moto = [a for a in db["abastecimentos"] if a.get("moto_id") == moto_ativa["id"]]
@@ -133,7 +137,7 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
                     for p in moto_ativa["pecas"]:
                         if p.get("nome") == comp_mn:
                             p["ultima_troca"] = int(odo_mn)
-                            if total_mn > 0:
+                            if total_mn > 0 and papel != "piloto":
                                 p["custo"] = float(total_mn)
                 if odo_mn > int(moto_ativa.get("hodometro", 0)):
                     moto_ativa["hodometro"] = int(odo_mn)
@@ -144,7 +148,8 @@ def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km,
         manut_moto = [m for m in db["manutencoes"] if m.get("moto_id") == moto_ativa["id"]]
         if manut_moto:
             st.subheader("Histórico de Oficina")
-            st.dataframe(pd.DataFrame(manut_moto)[["data", "hodometro", "componente", "oficina", "valor_total", "obs"]], use_container_width=True, hide_index=True)
+            colunas_of = ["data", "hodometro", "componente", "oficina", "obs"] if papel == "piloto" else ["data", "hodometro", "componente", "oficina", "valor_total", "obs"]
+            st.dataframe(pd.DataFrame(manut_moto)[colunas_of], use_container_width=True, hide_index=True)
 
     if sub_config is not None:
         opcoes_pil = {"": "🔓 Livre (Qualquer Piloto da Frota)"}

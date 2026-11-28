@@ -24,6 +24,11 @@
 - 26 testes em `tests/` (cálculos, migração e sincronização):
   `python -m unittest discover -s tests -v`
 
+## Ajuste 1 (após teste do piloto)
+- Piloto não vê mais ganhos brutos (métrica e coluna do histórico), código de convite nem valores da oficina.
+- Abastecimento e oficina do piloto não alteram preço da gasolina nem custo-base da peça.
+- Turnos novos guardam piloto_email (registros antigos continuam filtrados pelo nome).
+
 ## Ainda NÃO incluído (próximas rodadas)
 - Convites com validade/revogação e bloqueio de tentativas de PIN (as colunas e tabelas já existem no banco).
 - Botão Iniciar/Encerrar turno (tabela `turnos_abertos` já existe).

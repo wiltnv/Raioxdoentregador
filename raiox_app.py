@@ -50,7 +50,10 @@ with st.sidebar:
     badge_papel = "🏢 Gestor" if papel == "gestor" else ("🛵 Piloto" if papel == "piloto" else "🏍️ Autônomo")
     st.markdown(f"**{nome_usuario}** ({badge_papel})")
     if empresa_info:
-        st.info(f"🏢 **{empresa_info.get('nome_empresa')}**\n\nCódigo Convite: `{empresa_info.get('codigo_convite')}`")
+        if papel == "gestor":
+            st.info(f"🏢 **{empresa_info.get('nome_empresa')}**\n\nCódigo Convite: `{empresa_info.get('codigo_convite')}`")
+        else:
+            st.info(f"🏢 **{empresa_info.get('nome_empresa')}**")
     if st.button("🔄 Recarregar da Nuvem", use_container_width=True):
         st.session_state.pop("db", None)
         st.rerun()
@@ -170,7 +173,7 @@ with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manu
                         "data": str(date.today()), "moto_id": moto_ativa["id"], "hodometro": int(v_odo),
                         "litros": float(v_litros), "valor_pago": float(v_valor),
                         "preco_litro": round(v_valor / max(v_litros, 0.1), 2),
-                        "posto": voz_res.get("posto_ou_oficina", "Via Voz"), "piloto": nome_usuario
+                        "posto": voz_res.get("posto_ou_oficina", "Via Voz"), "piloto": nome_usuario, "piloto_email": email_usuario
                     })
                     if int(v_odo) > int(moto_ativa["hodometro"]):
                         moto_ativa["hodometro"] = int(v_odo)
@@ -190,7 +193,7 @@ with st.expander("🎙️ Lançar por Voz (IA Gemini — Gasolina, Turno ou Manu
                         st.error("Km Final precisa ser maior que o hodômetro atual.")
                     else:
                         db["turnos"].append({
-                            "data": str(date.today()), "moto_id": moto_ativa["id"], "piloto": nome_usuario,
+                            "data": str(date.today()), "moto_id": moto_ativa["id"], "piloto": nome_usuario, "piloto_email": email_usuario,
                             "km_ini": int(moto_ativa["hodometro"]), "km_fim": int(v_km_fim), "km": dist_v,
                             "ganho_app": float(v_app), "estabelecimento": voz_res.get("estabelecimento") or "Via Voz",
                             "ganho_estab": float(v_est), "bruto": float(v_app + v_est),
@@ -249,7 +252,7 @@ with tab_hoje:
         t for t in db["turnos"]
         if (filtro_visao == "Todas as Motos" or t.get("moto_id") == moto_ativa["id"])
         and (filtro_periodo == "Todos os Registros" or t["data"] >= DATA_INICIO_CICLO)
-        and (papel != "piloto" or t.get("piloto") == nome_usuario)
+        and (papel != "piloto" or (t.get("piloto_email") == email_usuario if t.get("piloto_email") else t.get("piloto") == nome_usuario))
     ]
 
     total_km = sum(t["km"] for t in turnos_filtrados)
@@ -268,7 +271,7 @@ with tab_hoje:
 
     if papel == "piloto":
         c1, c2 = st.columns(2)
-        c1.metric("Meus Ganhos Brutos", f"R$ {total_bruto:.2f}")
+        c1.metric("Turnos Registrados", f"{len(turnos_filtrados)}")
         c2.metric("Km Rodados", f"{total_km:,} km")
     else:
         c1, c2, c3 = st.columns(3)
@@ -306,7 +309,7 @@ with tab_hoje:
                         local_reg = f"Apps + {estabelecimento}"
 
                     db["turnos"].append({
-                        "data": str(data_turno), "moto_id": moto_ativa["id"], "piloto": nome_usuario,
+                        "data": str(data_turno), "moto_id": moto_ativa["id"], "piloto": nome_usuario, "piloto_email": email_usuario,
                         "km_ini": km_ini, "km_fim": km_fim, "km": dist,
                         "ganho_app": ganho_app, "estabelecimento": local_reg,
                         "ganho_estab": ganho_fixo, "bruto": bruto_dia,
@@ -327,9 +330,10 @@ with tab_hoje:
             liq = t["bruto"] - (t["km"] * c_km_ref) - t.get("extras", 0.0)
             row_item = {
                 "Data": t["data"], "Moto": m_ref["apelido"], "Origem": t["estabelecimento"],
-                "Km": t["km"], "Bruto (R$)": round(t["bruto"], 2)
+                "Km": t["km"]
             }
             if papel != "piloto":
+                row_item["Bruto (R$)"] = round(t["bruto"], 2)
                 row_item["Piloto"] = t.get("piloto", "-")
                 row_item["Líquido (R$)"] = round(liq, 2)
             rows.append(row_item)
