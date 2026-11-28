@@ -3,3 +3,4 @@ pandas
 streamlit-searchbox
 streamlit-js-eval
 supabase
+tzdata

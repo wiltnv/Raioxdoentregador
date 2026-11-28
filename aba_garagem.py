@@ -1,248 +1,248 @@
-import streamlit as st
-import pandas as pd
-from datetime import date
-from catalogo_motos import CATALOGO_MOTOS, criar_moto_do_catalogo
-import uuid
-from servicos_externos import save_state, definir_moto_ativa
-
-def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel="autonomo", empresa_info=None):
-    if papel == "piloto":
-        sub_pecas, sub_abast, sub_manut = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina"])
-        sub_config = None
-    else:
-        sub_pecas, sub_abast, sub_manut, sub_config = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina", "⚙️ Configurar Moto"])
-
-    if not isinstance(moto_ativa.get("pecas"), list) or not moto_ativa.get("pecas"):
-        moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], next(iter(CATALOGO_MOTOS.keys())), int(moto_ativa.get("hodometro", 0)))
-        moto_ativa["pecas"] = moto_padrao["pecas"]
-
-    with sub_pecas:
-        st.subheader(f"Painel de Desgaste — {moto_ativa['apelido']}")
-        if papel != "piloto":
-            g1, g2, g3 = st.columns(3)
-            g1.metric("Combustível / Km", f"R$ {custo_gas_km:.3f}")
-            g2.metric("Reserva Peças+Fixos / Km", f"R$ {custo_reserva_km:.3f}")
-            g3.metric("Total / Km", f"R$ {custo_gas_km + custo_reserva_km:.3f}")
-
-        for idx, info_p in enumerate(moto_ativa["pecas"]):
-            nome_p = info_p.get("nome", f"Peça {idx + 1}")
-            ult_km_val = int(info_p.get("ultima_troca", 0))
-            vida_val = int(info_p.get("intervalo", 1000))
-            custo_val = float(info_p.get("custo", 0.0))
-
-            km_rodado_p = max(0, int(moto_ativa.get("hodometro", 0)) - ult_km_val)
-            vida_p = max(1, vida_val)
-            pct_uso = min(1.0, km_rodado_p / vida_p)
-            km_restante = vida_p - km_rodado_p
-
-            if pct_uso >= 1.0:
-                status_icon = "🚨 VENCIDA"
-            elif pct_uso >= 0.80:
-                status_icon = "⚠️ ATENÇÃO"
-            else:
-                status_icon = "✅ OK"
-
-            col_p1, col_p2, col_p3 = st.columns([1.4, 1, 1])
-            col_p1.markdown(f"**{nome_p}** ({status_icon})")
-            col_p2.caption(f"Rodou: {km_rodado_p:,} / {vida_p:,} km")
-            col_p3.caption(f"Resta: **{km_restante:,} km**")
-            st.progress(pct_uso)
-
-            if papel != "piloto":
-                with st.expander(f"Editar parâmetro: {nome_p}"):
-                    ep1, ep2, ep3 = st.columns(3)
-                    novo_custo_p = ep1.number_input("Custo Troca (R$)", value=custo_val, step=5.0, key=f"c_{moto_ativa['id']}_{idx}")
-                    nova_vida_p = ep2.number_input("Vida Útil (km)", value=vida_val, step=500, key=f"v_{moto_ativa['id']}_{idx}")
-                    novo_ult_p = ep3.number_input("Última Troca (km)", value=ult_km_val, step=100, key=f"u_{moto_ativa['id']}_{idx}")
-                    if st.button("Salvar Parâmetro", key=f"btn_{moto_ativa['id']}_{idx}"):
-                        info_p["custo"] = float(novo_custo_p)
-                        info_p["intervalo"] = int(nova_vida_p)
-                        info_p["ultima_troca"] = int(novo_ult_p)
-                        save_state(user_key, db)
-                        st.success(f"{nome_p} atualizado!")
-                        st.rerun()
-
-    with sub_abast:
-        st.subheader("Registrar Abastecimento (Consumo Real)")
-        with st.form("form_abastecimento"):
-            ab1, ab2, ab3 = st.columns(3)
-            data_ab = ab1.date_input("Data", value=date.today())
-            odo_ab = ab2.number_input("Hodômetro no Posto (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
-            litros_ab = ab3.number_input("Litros Abastecidos", min_value=0.1, value=10.0, step=0.1, format="%.2f")
-
-            ab4, ab5 = st.columns(2)
-            valor_ab = ab4.number_input("Valor Total Pago (R$)", min_value=1.0, value=59.90, step=1.0, format="%.2f")
-            posto_ab = ab5.text_input("Posto / Bandeira", value="Shell / Ipiranga")
-
-            if st.form_submit_button("Salvar Abastecimento", use_container_width=True):
-                preco_l_calc = round(valor_ab / litros_ab, 2)
-                db["abastecimentos"].append({
-                    "data": str(data_ab), "moto_id": moto_ativa["id"], "hodometro": int(odo_ab),
-                    "litros": float(litros_ab), "valor_pago": float(valor_ab),
-                    "preco_litro": preco_l_calc, "posto": posto_ab
-                })
-                if papel != "piloto":
-                    moto_ativa["preco_gasolina"] = preco_l_calc
-                if odo_ab > int(moto_ativa.get("hodometro", 0)):
-                    moto_ativa["hodometro"] = int(odo_ab)
-                save_state(user_key, db)
-                if papel == "piloto":
-                    st.success("Abastecimento salvo!")
-                else:
-                    st.success(f"Abastecimento salvo! Preço/L atualizado para R$ {preco_l_calc:.2f}.")
-                st.rerun()
-
-        abast_moto = [a for a in db["abastecimentos"] if a.get("moto_id") == moto_ativa["id"]]
-        if len(abast_moto) >= 2:
-            abast_ord = sorted(abast_moto, key=lambda x: x["hodometro"])
-            ult, pen = abast_ord[-1], abast_ord[-2]
-            km_trecho = ult["hodometro"] - pen["hodometro"]
-            if km_trecho > 0 and ult["litros"] > 0:
-                media_real = km_trecho / ult["litros"]
-                st.info(f"⛽ **Última Média Real Medida:** **{media_real:.1f} km/L** ({km_trecho} km com {ult['litros']:.2f} L)")
-                if papel != "piloto":
-                    if st.button(f"Aplicar {media_real:.1f} km/L como consumo base da moto"):
-                        moto_ativa["consumo_kml"] = round(media_real, 1)
-                        save_state(user_key, db)
-                        st.rerun()
-
-        if abast_moto:
-            st.dataframe(pd.DataFrame(abast_moto)[["data", "hodometro", "litros", "valor_pago", "preco_litro", "posto"]], use_container_width=True, hide_index=True)
-    with sub_manut:
-        st.subheader("Registrar Serviço / Troca de Peça")
-        nomes_pecas = [p.get("nome", "") for p in moto_ativa["pecas"] if p.get("nome")]
-        opcoes_comp = nomes_pecas + ["Outro Serviço / Mão de Obra Avulsa"]
-        with st.form("form_manutencao"):
-            mn1, mn2, mn3 = st.columns(3)
-            data_mn = mn1.date_input("Data", value=date.today())
-            odo_mn = mn2.number_input("Hodômetro na Troca (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
-            comp_mn = mn3.selectbox("Componente / Peça", options=opcoes_comp)
-
-            mn4, mn5, mn6 = st.columns(3)
-            oficina_mn = mn4.text_input("Oficina / Mecânico", value="Oficina Local")
-            val_peca_mn = mn5.number_input("Valor Peça (R$)", min_value=0.0, value=0.0, step=5.0)
-            val_mo_mn = mn6.number_input("Mão de Obra (R$)", min_value=0.0, value=0.0, step=5.0)
-
-            obs_mn = st.text_input("Observação (marca da peça, garantia, etc.)")
-            resetar_ciclo = st.checkbox("Zerar desgaste desta peça no painel (iniciar novo ciclo a partir deste km)", value=True)
-
-            if st.form_submit_button("Registrar Manutenção", use_container_width=True):
-                total_mn = val_peca_mn + val_mo_mn
-                db["manutencoes"].append({
-                    "data": str(data_mn), "moto_id": moto_ativa["id"], "hodometro": int(odo_mn),
-                    "tipo": "preventiva", "componente": comp_mn, "oficina": oficina_mn,
-                    "valor_peca": float(val_peca_mn), "valor_total": float(total_mn), "obs": obs_mn
-                })
-                if resetar_ciclo:
-                    for p in moto_ativa["pecas"]:
-                        if p.get("nome") == comp_mn:
-                            p["ultima_troca"] = int(odo_mn)
-                            if total_mn > 0 and papel != "piloto":
-                                p["custo"] = float(total_mn)
-                if odo_mn > int(moto_ativa.get("hodometro", 0)):
-                    moto_ativa["hodometro"] = int(odo_mn)
-                save_state(user_key, db)
-                st.success(f"Manutenção registrada (R$ {total_mn:.2f})!")
-                st.rerun()
-
-        manut_moto = [m for m in db["manutencoes"] if m.get("moto_id") == moto_ativa["id"]]
-        if manut_moto:
-            st.subheader("Histórico de Oficina")
-            colunas_of = ["data", "hodometro", "componente", "oficina", "obs"] if papel == "piloto" else ["data", "hodometro", "componente", "oficina", "valor_total", "obs"]
-            st.dataframe(pd.DataFrame(manut_moto)[colunas_of], use_container_width=True, hide_index=True)
-
-    if sub_config is not None:
-        opcoes_pil = {"": "🔓 Livre (Qualquer Piloto da Frota)"}
-        emp_id = (empresa_info or {}).get("id") or moto_ativa.get("empresa_id")
-        if papel == "gestor" and emp_id:
-            from auth_manager import listar_pilotos_empresa
-            for p_item in listar_pilotos_empresa(emp_id):
-                opcoes_pil[p_item["email"]] = f"🛵 {p_item['nome']} ({p_item['email']})"
-
-        with sub_config:
-            st.subheader(f"Parâmetros — {moto_ativa['apelido']}")
-            with st.form("form_cfg_moto"):
-                cg1, cg2, cg3 = st.columns(3)
-                novo_apelido = cg1.text_input("Apelido da Moto", value=str(moto_ativa.get("apelido", "Moto")))
-                novo_odo = cg2.number_input("Hodômetro Atual (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
-                novo_gas = cg3.number_input("Gasolina Base (R$/L)", value=float(moto_ativa.get("preco_gasolina", 5.99)), step=0.05, format="%.2f")
-                cg4, cg5, cg6 = st.columns(3)
-                novo_kml = cg4.number_input("Consumo Base (km/L)", value=float(moto_ativa.get("consumo_kml", 35.0)), step=0.5, format="%.1f")
-                novo_seg = cg5.number_input("Seguro Anual (R$)", value=float(moto_ativa.get("seguro_anual", 0.0)), step=10.0, format="%.2f")
-                novo_lic = cg6.number_input("IPVA/Licenc. (R$)", value=float(moto_ativa.get("licenciamento_anual", 0.0)), step=5.0, format="%.2f")
-
-                piloto_resp = moto_ativa.get("piloto_email", "")
-                if papel == "gestor":
-                    idx_pil = list(opcoes_pil.keys()).index(piloto_resp) if piloto_resp in opcoes_pil else 0
-                    piloto_resp = st.selectbox(
-                        "Colaborador Responsável por esta Moto:",
-                        options=list(opcoes_pil.keys()),
-                        format_func=lambda k: opcoes_pil[k],
-                        index=idx_pil,
-                        key="sel_piloto_cfg"
-                    )
-
-                if st.form_submit_button("Salvar Configurações da Moto", use_container_width=True):
-                    moto_ativa.update({
-                        "apelido": novo_apelido, "hodometro": int(novo_odo), "preco_gasolina": float(novo_gas),
-                        "consumo_kml": float(novo_kml), "seguro_anual": float(novo_seg), "licenciamento_anual": float(novo_lic),
-                        "piloto_email": piloto_resp
-                    })
-                    save_state(user_key, db)
-                    st.success("Configurações atualizadas!")
-                    st.rerun()
-
-            st.divider()
-            st.subheader("➕ Cadastrar Outra Moto (Multi-Moto)")
-            with st.form("form_add_moto"):
-                am1, am2, am3 = st.columns([1.2, 1.5, 1])
-                apelido_nova = am1.text_input("Apelido (ex: CG Reserva)")
-                modelo_cat = am2.selectbox("Modelo Pré-Calibrado", options=list(CATALOGO_MOTOS.keys()))
-                odo_nova = am3.number_input("Hodômetro Atual", min_value=0, value=0, step=100)
-
-                piloto_nova = ""
-                if papel == "gestor":
-                    piloto_nova = st.selectbox(
-                        "Atribuir Colaborador à Nova Moto:",
-                        options=list(opcoes_pil.keys()),
-                        format_func=lambda k: opcoes_pil[k],
-                        key="sel_piloto_add"
-                    )
-
-                if st.form_submit_button("Cadastrar e Ativar Nova Moto", use_container_width=True):
-                    if not apelido_nova.strip():
-                        st.error("Informe um apelido para a moto.")
-                    else:
-                        novo_id = f"moto_{uuid.uuid4().hex[:10]}"
-                        nova_m = criar_moto_do_catalogo(novo_id, apelido_nova, modelo_cat, int(odo_nova))
-                        nova_m["piloto_email"] = piloto_nova
-                        nova_m["empresa_id"] = moto_ativa.get("empresa_id", "")
-                        db["motos"].append(nova_m)
-                        definir_moto_ativa(db, novo_id, papel)
-                        save_state(user_key, db)
-                        st.success("Nova moto cadastrada e ativada!")
-                        st.rerun()
-
-            if len(db["motos"]) > 1:
-                st.divider()
-                st.subheader("🗑️ Excluir Moto Cadastrada")
-                opcoes_ex_moto = {
-                    m["id"]: f"{m['apelido']} ({m.get('modelo', 'Moto')} • {int(m.get('hodometro', 0)):,} km)"
-                    for m in db["motos"]
-                }
-                moto_del_id = st.selectbox(
-                    "Selecione a moto para remover:",
-                    options=list(opcoes_ex_moto.keys()),
-                    format_func=lambda mid: opcoes_ex_moto[mid],
-                    key="sel_excluir_moto",
-                )
-                if st.button("Confirmar Exclusão da Moto", type="primary", key="btn_excluir_moto"):
-                    db["motos"] = [m for m in db["motos"] if m["id"] != moto_del_id]
-                    if moto_ativa["id"] == moto_del_id:
-                        primeiro_m = next(iter(db["motos"]))
-                        definir_moto_ativa(db, primeiro_m["id"], papel)
-                    if db.get("moto_ativa_id") == moto_del_id:
-                        db["moto_ativa_id"] = db["motos"][0]["id"]
-                    save_state(user_key, db)
-                    st.warning("Moto removida com sucesso!")
-                    st.rerun()
+import streamlit as st
+import pandas as pd
+from datetime import date
+from catalogo_motos import CATALOGO_MOTOS, criar_moto_do_catalogo
+import uuid
+from servicos_externos import save_state, definir_moto_ativa
+
+def render_aba_garagem(db, user_key, moto_ativa, custo_gas_km, custo_reserva_km, papel="autonomo", empresa_info=None):
+    if papel == "piloto":
+        sub_pecas, sub_abast, sub_manut = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina"])
+        sub_config = None
+    else:
+        sub_pecas, sub_abast, sub_manut, sub_config = st.tabs(["🩺 Saúde das Peças", "⛽ Abastecer", "🛠️ Oficina", "⚙️ Configurar Moto"])
+
+    if not isinstance(moto_ativa.get("pecas"), list) or not moto_ativa.get("pecas"):
+        moto_padrao = criar_moto_do_catalogo(moto_ativa["id"], moto_ativa["apelido"], next(iter(CATALOGO_MOTOS.keys())), int(moto_ativa.get("hodometro", 0)))
+        moto_ativa["pecas"] = moto_padrao["pecas"]
+
+    with sub_pecas:
+        st.subheader(f"Painel de Desgaste — {moto_ativa['apelido']}")
+        if papel != "piloto":
+            g1, g2, g3 = st.columns(3)
+            g1.metric("Combustível / Km", f"R$ {custo_gas_km:.3f}")
+            g2.metric("Reserva Peças+Fixos / Km", f"R$ {custo_reserva_km:.3f}")
+            g3.metric("Total / Km", f"R$ {custo_gas_km + custo_reserva_km:.3f}")
+
+        for idx, info_p in enumerate(moto_ativa["pecas"]):
+            nome_p = info_p.get("nome", f"Peça {idx + 1}")
+            ult_km_val = int(info_p.get("ultima_troca", 0))
+            vida_val = int(info_p.get("intervalo", 1000))
+            custo_val = float(info_p.get("custo", 0.0))
+
+            km_rodado_p = max(0, int(moto_ativa.get("hodometro", 0)) - ult_km_val)
+            vida_p = max(1, vida_val)
+            pct_uso = min(1.0, km_rodado_p / vida_p)
+            km_restante = vida_p - km_rodado_p
+
+            if pct_uso >= 1.0:
+                status_icon = "🚨 VENCIDA"
+            elif pct_uso >= 0.80:
+                status_icon = "⚠️ ATENÇÃO"
+            else:
+                status_icon = "✅ OK"
+
+            col_p1, col_p2, col_p3 = st.columns([1.4, 1, 1])
+            col_p1.markdown(f"**{nome_p}** ({status_icon})")
+            col_p2.caption(f"Rodou: {km_rodado_p:,} / {vida_p:,} km")
+            col_p3.caption(f"Resta: **{km_restante:,} km**")
+            st.progress(pct_uso)
+
+            if papel != "piloto":
+                with st.expander(f"Editar parâmetro: {nome_p}"):
+                    ep1, ep2, ep3 = st.columns(3)
+                    novo_custo_p = ep1.number_input("Custo Troca (R$)", value=custo_val, step=5.0, key=f"c_{moto_ativa['id']}_{idx}")
+                    nova_vida_p = ep2.number_input("Vida Útil (km)", value=vida_val, step=500, key=f"v_{moto_ativa['id']}_{idx}")
+                    novo_ult_p = ep3.number_input("Última Troca (km)", value=ult_km_val, step=100, key=f"u_{moto_ativa['id']}_{idx}")
+                    if st.button("Salvar Parâmetro", key=f"btn_{moto_ativa['id']}_{idx}"):
+                        info_p["custo"] = float(novo_custo_p)
+                        info_p["intervalo"] = int(nova_vida_p)
+                        info_p["ultima_troca"] = int(novo_ult_p)
+                        save_state(user_key, db)
+                        st.success(f"{nome_p} atualizado!")
+                        st.rerun()
+
+    with sub_abast:
+        st.subheader("Registrar Abastecimento (Consumo Real)")
+        with st.form("form_abastecimento"):
+            ab1, ab2, ab3 = st.columns(3)
+            data_ab = ab1.date_input("Data", value=date.today())
+            odo_ab = ab2.number_input("Hodômetro no Posto (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
+            litros_ab = ab3.number_input("Litros Abastecidos", min_value=0.1, value=10.0, step=0.1, format="%.2f")
+
+            ab4, ab5 = st.columns(2)
+            valor_ab = ab4.number_input("Valor Total Pago (R$)", min_value=1.0, value=59.90, step=1.0, format="%.2f")
+            posto_ab = ab5.text_input("Posto / Bandeira", value="Shell / Ipiranga")
+
+            if st.form_submit_button("Salvar Abastecimento", use_container_width=True):
+                preco_l_calc = round(valor_ab / litros_ab, 2)
+                db["abastecimentos"].append({
+                    "data": str(data_ab), "moto_id": moto_ativa["id"], "hodometro": int(odo_ab),
+                    "litros": float(litros_ab), "valor_pago": float(valor_ab),
+                    "preco_litro": preco_l_calc, "posto": posto_ab
+                })
+                if papel != "piloto":
+                    moto_ativa["preco_gasolina"] = preco_l_calc
+                if odo_ab > int(moto_ativa.get("hodometro", 0)):
+                    moto_ativa["hodometro"] = int(odo_ab)
+                save_state(user_key, db)
+                if papel == "piloto":
+                    st.success("Abastecimento salvo!")
+                else:
+                    st.success(f"Abastecimento salvo! Preço/L atualizado para R$ {preco_l_calc:.2f}.")
+                st.rerun()
+
+        abast_moto = [a for a in db["abastecimentos"] if a.get("moto_id") == moto_ativa["id"]]
+        if len(abast_moto) >= 2:
+            abast_ord = sorted(abast_moto, key=lambda x: x["hodometro"])
+            ult, pen = abast_ord[-1], abast_ord[-2]
+            km_trecho = ult["hodometro"] - pen["hodometro"]
+            if km_trecho > 0 and ult["litros"] > 0:
+                media_real = km_trecho / ult["litros"]
+                st.info(f"⛽ **Última Média Real Medida:** **{media_real:.1f} km/L** ({km_trecho} km com {ult['litros']:.2f} L)")
+                if papel != "piloto":
+                    if st.button(f"Aplicar {media_real:.1f} km/L como consumo base da moto"):
+                        moto_ativa["consumo_kml"] = round(media_real, 1)
+                        save_state(user_key, db)
+                        st.rerun()
+
+        if abast_moto:
+            st.dataframe(pd.DataFrame(abast_moto)[["data", "hodometro", "litros", "valor_pago", "preco_litro", "posto"]], use_container_width=True, hide_index=True)
+    with sub_manut:
+        st.subheader("Registrar Serviço / Troca de Peça")
+        nomes_pecas = [p.get("nome", "") for p in moto_ativa["pecas"] if p.get("nome")]
+        opcoes_comp = nomes_pecas + ["Outro Serviço / Mão de Obra Avulsa"]
+        with st.form("form_manutencao"):
+            mn1, mn2, mn3 = st.columns(3)
+            data_mn = mn1.date_input("Data", value=date.today())
+            odo_mn = mn2.number_input("Hodômetro na Troca (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
+            comp_mn = mn3.selectbox("Componente / Peça", options=opcoes_comp)
+
+            mn4, mn5, mn6 = st.columns(3)
+            oficina_mn = mn4.text_input("Oficina / Mecânico", value="Oficina Local")
+            val_peca_mn = mn5.number_input("Valor Peça (R$)", min_value=0.0, value=0.0, step=5.0)
+            val_mo_mn = mn6.number_input("Mão de Obra (R$)", min_value=0.0, value=0.0, step=5.0)
+
+            obs_mn = st.text_input("Observação (marca da peça, garantia, etc.)")
+            resetar_ciclo = st.checkbox("Zerar desgaste desta peça no painel (iniciar novo ciclo a partir deste km)", value=True)
+
+            if st.form_submit_button("Registrar Manutenção", use_container_width=True):
+                total_mn = val_peca_mn + val_mo_mn
+                db["manutencoes"].append({
+                    "data": str(data_mn), "moto_id": moto_ativa["id"], "hodometro": int(odo_mn),
+                    "tipo": "preventiva", "componente": comp_mn, "oficina": oficina_mn,
+                    "valor_peca": float(val_peca_mn), "valor_total": float(total_mn), "obs": obs_mn
+                })
+                if resetar_ciclo:
+                    for p in moto_ativa["pecas"]:
+                        if p.get("nome") == comp_mn:
+                            p["ultima_troca"] = int(odo_mn)
+                            if total_mn > 0 and papel != "piloto":
+                                p["custo"] = float(total_mn)
+                if odo_mn > int(moto_ativa.get("hodometro", 0)):
+                    moto_ativa["hodometro"] = int(odo_mn)
+                save_state(user_key, db)
+                st.success(f"Manutenção registrada (R$ {total_mn:.2f})!")
+                st.rerun()
+
+        manut_moto = [m for m in db["manutencoes"] if m.get("moto_id") == moto_ativa["id"]]
+        if manut_moto:
+            st.subheader("Histórico de Oficina")
+            colunas_of = ["data", "hodometro", "componente", "oficina", "obs"] if papel == "piloto" else ["data", "hodometro", "componente", "oficina", "valor_total", "obs"]
+            st.dataframe(pd.DataFrame(manut_moto)[colunas_of], use_container_width=True, hide_index=True)
+
+    if sub_config is not None:
+        opcoes_pil = {"": "🔓 Livre (Qualquer Piloto da Frota)"}
+        emp_id = (empresa_info or {}).get("id") or moto_ativa.get("empresa_id")
+        if papel == "gestor" and emp_id:
+            from auth_manager import listar_pilotos_empresa
+            for p_item in listar_pilotos_empresa(emp_id):
+                opcoes_pil[p_item["email"]] = f"🛵 {p_item['nome']} ({p_item['email']})"
+
+        with sub_config:
+            st.subheader(f"Parâmetros — {moto_ativa['apelido']}")
+            with st.form("form_cfg_moto"):
+                cg1, cg2, cg3 = st.columns(3)
+                novo_apelido = cg1.text_input("Apelido da Moto", value=str(moto_ativa.get("apelido", "Moto")))
+                novo_odo = cg2.number_input("Hodômetro Atual (km)", value=int(moto_ativa.get("hodometro", 0)), step=1)
+                novo_gas = cg3.number_input("Gasolina Base (R$/L)", value=float(moto_ativa.get("preco_gasolina", 5.99)), step=0.05, format="%.2f")
+                cg4, cg5, cg6 = st.columns(3)
+                novo_kml = cg4.number_input("Consumo Base (km/L)", value=float(moto_ativa.get("consumo_kml", 35.0)), step=0.5, format="%.1f")
+                novo_seg = cg5.number_input("Seguro Anual (R$)", value=float(moto_ativa.get("seguro_anual", 0.0)), step=10.0, format="%.2f")
+                novo_lic = cg6.number_input("IPVA/Licenc. (R$)", value=float(moto_ativa.get("licenciamento_anual", 0.0)), step=5.0, format="%.2f")
+
+                piloto_resp = moto_ativa.get("piloto_email", "")
+                if papel == "gestor":
+                    idx_pil = list(opcoes_pil.keys()).index(piloto_resp) if piloto_resp in opcoes_pil else 0
+                    piloto_resp = st.selectbox(
+                        "Colaborador Responsável por esta Moto:",
+                        options=list(opcoes_pil.keys()),
+                        format_func=lambda k: opcoes_pil[k],
+                        index=idx_pil,
+                        key="sel_piloto_cfg"
+                    )
+
+                if st.form_submit_button("Salvar Configurações da Moto", use_container_width=True):
+                    moto_ativa.update({
+                        "apelido": novo_apelido, "hodometro": int(novo_odo), "preco_gasolina": float(novo_gas),
+                        "consumo_kml": float(novo_kml), "seguro_anual": float(novo_seg), "licenciamento_anual": float(novo_lic),
+                        "piloto_email": piloto_resp
+                    })
+                    save_state(user_key, db)
+                    st.success("Configurações atualizadas!")
+                    st.rerun()
+
+            st.divider()
+            st.subheader("➕ Cadastrar Outra Moto (Multi-Moto)")
+            with st.form("form_add_moto"):
+                am1, am2, am3 = st.columns([1.2, 1.5, 1])
+                apelido_nova = am1.text_input("Apelido (ex: CG Reserva)")
+                modelo_cat = am2.selectbox("Modelo Pré-Calibrado", options=list(CATALOGO_MOTOS.keys()))
+                odo_nova = am3.number_input("Hodômetro Atual", min_value=0, value=0, step=100)
+
+                piloto_nova = ""
+                if papel == "gestor":
+                    piloto_nova = st.selectbox(
+                        "Atribuir Colaborador à Nova Moto:",
+                        options=list(opcoes_pil.keys()),
+                        format_func=lambda k: opcoes_pil[k],
+                        key="sel_piloto_add"
+                    )
+
+                if st.form_submit_button("Cadastrar e Ativar Nova Moto", use_container_width=True):
+                    if not apelido_nova.strip():
+                        st.error("Informe um apelido para a moto.")
+                    else:
+                        novo_id = f"moto_{uuid.uuid4().hex[:10]}"
+                        nova_m = criar_moto_do_catalogo(novo_id, apelido_nova, modelo_cat, int(odo_nova))
+                        nova_m["piloto_email"] = piloto_nova
+                        nova_m["empresa_id"] = moto_ativa.get("empresa_id", "")
+                        db["motos"].append(nova_m)
+                        definir_moto_ativa(db, novo_id, papel)
+                        save_state(user_key, db)
+                        st.success("Nova moto cadastrada e ativada!")
+                        st.rerun()
+
+            if len(db["motos"]) > 1:
+                st.divider()
+                st.subheader("🗑️ Excluir Moto Cadastrada")
+                opcoes_ex_moto = {
+                    m["id"]: f"{m['apelido']} ({m.get('modelo', 'Moto')} • {int(m.get('hodometro', 0)):,} km)"
+                    for m in db["motos"]
+                }
+                moto_del_id = st.selectbox(
+                    "Selecione a moto para remover:",
+                    options=list(opcoes_ex_moto.keys()),
+                    format_func=lambda mid: opcoes_ex_moto[mid],
+                    key="sel_excluir_moto",
+                )
+                if st.button("Confirmar Exclusão da Moto", type="primary", key="btn_excluir_moto"):
+                    db["motos"] = [m for m in db["motos"] if m["id"] != moto_del_id]
+                    if moto_ativa["id"] == moto_del_id:
+                        primeiro_m = next(iter(db["motos"]))
+                        definir_moto_ativa(db, primeiro_m["id"], papel)
+                    if db.get("moto_ativa_id") == moto_del_id:
+                        db["moto_ativa_id"] = db["motos"][0]["id"]
+                    save_state(user_key, db)
+                    st.warning("Moto removida com sucesso!")
+                    st.rerun()

@@ -31,6 +31,17 @@
 
 ## Ainda NÃO incluído (próximas rodadas)
 - Convites com validade/revogação e bloqueio de tentativas de PIN (as colunas e tabelas já existem no banco).
-- Botão Iniciar/Encerrar turno (tabela `turnos_abertos` já existe).
 - Piloto ainda vê o valor_total da oficina na aba Garagem e o abastecimento do piloto ainda
   atualiza o preço da gasolina da moto.
+
+## Rodada 4: Iniciar / Encerrar turno
+- Rode ANTES do deploy: `sql/rodada4_turnos.sql` (2 colunas em `turnos_abertos`).
+- Cartão "🏁 Turno" na aba Meu Turno: ▶️ Iniciar (grava hora e hodômetro no banco, sobrevive a fechar o app)
+  e ⏹️ Encerrar (Km final, ganhos, extras) que gera o turno normal com início, fim e duração.
+- Km entre o fim de um turno e o início do próximo = "fora de turno" (uso particular), calculado sozinho.
+- Autônomo e gestor veem Líquido por hora, duração no histórico e km fora de turno. Piloto não vê valores.
+- Gestor vê "🟢 Em turno agora" (quem, qual moto, desde que horas).
+- Proteções: um turno aberto por pessoa, encerrar só vale uma vez (duplo clique/duas telas),
+  falha ao salvar reabre o turno e recarrega da nuvem, alerta após 12 h aberto, cancelar turno.
+- Novos: `turnos.py` (regras e banco, testável), `ui_turno.py` (tela), `tests/test_turnos.py`.
+- Formulário manual de turno continua disponível (recolhido).

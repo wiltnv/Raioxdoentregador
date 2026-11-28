@@ -10,6 +10,8 @@ from servicos_externos import (
     carregar_config_precos, salvar_config_precos, obter_moto_ativa_id, definir_moto_ativa,
 )
 from auth_manager import render_tela_login
+from ui_turno import render_turno_em_andamento
+from turnos import formatar_duracao
 
 try:
     from streamlit_searchbox import st_searchbox
@@ -282,8 +284,21 @@ with tab_hoje:
             f"💰 **Caixinha da Moto (Não Gastar):** Separe **R$ {total_gas + total_reserva:.2f}** "
             f"(**R$ {total_gas:.2f}** Gasolina + **R$ {total_reserva:.2f}** Reserva Manutenção/Fixos)"
         )
+        turnos_dur = [t for t in turnos_filtrados if t.get("duracao_min")]
+        if turnos_dur:
+            liq_dur = sum(
+                t["bruto"] - t["km"] * calc_custos_moto(motos_dict.get(t.get("moto_id"), moto_ativa))[2] - t.get("extras", 0.0)
+                for t in turnos_dur
+            )
+            horas_dur = sum(t["duracao_min"] for t in turnos_dur) / 60.0
+            st.caption(f"⏱️ Líquido por hora (turnos com Iniciar/Encerrar): **R$ {liq_dur / horas_dur:.2f}/h** em {horas_dur:.1f} h")
+        km_fora = sum(t.get("km_particular_antes", 0) or 0 for t in turnos_filtrados)
+        if km_fora > 0:
+            st.caption(f"🚶 Km rodados fora de turno (entre um turno e outro): **{int(km_fora):,} km**")
 
-    with st.expander("➕ Registrar Novo Turno (Fechamento Rápido)", expanded=True):
+    render_turno_em_andamento(db, user_key, perfil, papel, motos_dict, moto_ativa, nome_usuario, email_usuario)
+
+    with st.expander("➕ Registrar turno manualmente (sem Iniciar/Encerrar)", expanded=False):
         with st.form("form_turno"):
             col_d, col1, col2 = st.columns([1.2, 1, 1])
             data_turno = col_d.date_input("Data", value=date.today())
@@ -332,10 +347,12 @@ with tab_hoje:
                 "Data": t["data"], "Moto": m_ref["apelido"], "Origem": t["estabelecimento"],
                 "Km": t["km"]
             }
+            row_item["Duração"] = formatar_duracao(t["duracao_min"]) if t.get("duracao_min") else "-"
             if papel != "piloto":
                 row_item["Bruto (R$)"] = round(t["bruto"], 2)
                 row_item["Piloto"] = t.get("piloto", "-")
                 row_item["Líquido (R$)"] = round(liq, 2)
+                row_item["Líq./h (R$)"] = round(liq / (t["duracao_min"] / 60.0), 2) if t.get("duracao_min") else None
             rows.append(row_item)
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
